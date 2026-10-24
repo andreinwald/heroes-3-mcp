@@ -11,10 +11,16 @@
 #include "GameActions.h"
 
 #include "CPlayerInterface.h"
+#include "GameEngine.h"
 #include "GameInstance.h"
 #include "PlayerLocalState.h"
 #include "adventureMap/AdventureMapInterface.h"
 #include "battle/BattleInterface.h"
+#include "gui/WindowHandler.h"
+#include "widgets/CComponent.h"
+#include "windows/CExchangeWindow.h"
+#include "windows/GUIClasses.h"
+#include "windows/InfoWindows.h"
 
 #include "../lib/CStack.h"
 #include "../lib/callback/CCallback.h"
@@ -326,4 +332,75 @@ std::string mcpAttack(int stackId)
 		cb.battleMakeUnitAction(battleID, *action);
 
 	return result;
+}
+
+std::string mcpAnswer(int choice)
+{
+	if(!GAME || !GAME->interface() || !GAME->interface()->cb || !ENGINE)
+		return "error: no game is in progress";
+
+	CPlayerInterface & interface = *GAME->interface();
+	CCallback & cb = *interface.cb;
+
+	std::shared_lock stateLock(CGameState::mutex);
+
+	std::shared_ptr<CInfoWindow> window;
+	for(const auto & candidate : ENGINE->windows().findWindows<CInfoWindow>())
+	{
+		if(candidate)
+			window = candidate;
+	}
+
+	if(window)
+	{
+		const bool choose = dynamic_cast<CSelWindow *>(window.get()) != nullptr;
+		const bool yesNo = !choose && window->buttons.size() >= 2;
+		const int question = window->ID.getNum();
+		int minChoice = 1;
+		int maxChoice = 1;
+
+		if(choose)
+		{
+			maxChoice = window->components ? static_cast<int>(window->components->getComponents().size()) : 0;
+			minChoice = window->buttons.size() > 1 ? 0 : 1;
+		}
+		else if(yesNo)
+		{
+			minChoice = 0;
+			maxChoice = 1;
+		}
+
+		if(choice < minChoice || choice > maxChoice)
+			return "error: choice must be between " + std::to_string(minChoice) + " and " + std::to_string(maxChoice);
+
+		const std::string result = "answer " + field("choice", std::to_string(choice))
+			+ (question >= 0 ? " " + field("question", std::to_string(question)) : "")
+			+ "\n";
+
+		stateLock.unlock();
+		if(question >= 0)
+			cb.selectionMade(choice, window->ID);
+		window->close();
+		return result;
+	}
+
+	if(const auto window = ENGINE->windows().topWindow<CExchangeWindow>())
+	{
+		if(choice != 0)
+			return "error: exchange window only supports choice=0 (leave)";
+		const QuestionID question = window->getQuestionID();
+		stateLock.unlock();
+		if(question.getNum() > 0)
+			cb.selectionMade(0, question);
+		window->close();
+		return "answer choice=0 type=exchange\n";
+	}
+
+	if(ENGINE->windows().topWindow<CLevelWindow>())
+		return "error: level-up skill choice is not supported yet";
+
+	if(interface.showingDialog && interface.showingDialog->isBusy())
+		return "error: a dialog is open but has no listed choices";
+
+	return "error: no dialog is open";
 }

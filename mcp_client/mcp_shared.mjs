@@ -9,7 +9,7 @@ export const tools = [
 	{
 		name: "get_state",
 		description:
-			"Text snapshot of the visible game: date, resources, your heroes and towns, visible map objects, and the current battle.",
+			"Text snapshot of the visible game: date, resources, your heroes and towns, visible map objects, blocking dialogs with numbered choices, and the current battle.",
 		inputSchema: { type: "object", properties: {} },
 	},
 	{
@@ -37,6 +37,18 @@ export const tools = [
 				stack: { type: "integer", description: "Enemy stack id from get_state." },
 			},
 			required: ["stack"],
+		},
+	},
+	{
+		name: "answer",
+		description:
+			"Pick an option on the open blocking dialog. choice is the number from get_state: 1 or 2 for gold vs experience, 1=yes 0=no, 0=cancel when listed.",
+		inputSchema: {
+			type: "object",
+			properties: {
+				choice: { type: "integer", description: "Option number from get_state." },
+			},
+			required: ["choice"],
 		},
 	},
 ];

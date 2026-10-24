@@ -457,6 +457,11 @@ int CComponentBox::selectedIndex()
 	return -1;
 }
 
+const std::vector<std::shared_ptr<CComponent>> & CComponentBox::getComponents() const
+{
+	return components;
+}
+
 Point CComponentBox::getOrTextPos(CComponent *left, CComponent *right)
 {
 	int leftSubtitle  = ( left->pos.w -  left->image->pos.w) / 2;

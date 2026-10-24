@@ -112,6 +112,7 @@ class CComponentBox : public CIntObject
 public:
 	/// return index of selected item
 	int selectedIndex();
+	const std::vector<std::shared_ptr<CComponent>> & getComponents() const;
 
 	/// constructors for non-selectable components
 	CComponentBox(std::vector<std::shared_ptr<CComponent>> components, Rect position);
