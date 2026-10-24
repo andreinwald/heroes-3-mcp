@@ -34,6 +34,7 @@
 #include "render/RenderHandler.h"
 #include "GameEngineUser.h"
 #include "battle/BattleInterface.h"
+#include "mcp/McpServer.h"
 
 #include "../lib/AsyncRunner.h"
 #include "../lib/CConfigHandler.h"
@@ -111,8 +112,11 @@ void GameEngine::fakeMouseMove()
 
 [[noreturn]] void GameEngine::mainLoop()
 {
+	McpServer::instance().start();
+
 	for (;;)
 	{
+		McpServer::instance().drain();
 		input().fetchEvents();
 
 		// A frame with nothing new to show would still hold interfaceMutex, which is the lock the
@@ -162,6 +166,8 @@ void GameEngine::updateFrame()
 
 GameEngine::~GameEngine()
 {
+	McpServer::instance().stop();
+
 	// enforce deletion order on shutdown
 	// all UI elements including adventure map must be destroyed before Gui Handler
 	// proper solution would be removal of adventureInt global

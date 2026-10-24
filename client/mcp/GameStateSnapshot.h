@@ -1,0 +1,16 @@
+/*
+ * GameStateSnapshot.h, part of VCMI engine
+ *
+ * Authors: listed in file AUTHORS in main folder
+ *
+ * License: GNU General Public License v2.0 or later
+ * Full text of license available in license.txt file, in main folder
+ *
+ */
+#pragma once
+
+#include <string>
+
+/// Text description of what the current human player can see.
+/// Call only on the GUI thread, while holding the interface mutex and a shared game-state lock.
+std::string buildMcpGameState();

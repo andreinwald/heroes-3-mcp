@@ -1,0 +1,5 @@
+{
+  "name": "vcmi-mcp-client",
+  "private": true,
+  "type": "module"
+}

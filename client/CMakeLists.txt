@@ -198,6 +198,8 @@ set(vcmiclientcommon_SRCS
 	ClientCommandManager.cpp
 	GameChatHandler.cpp
 	HeroMovementController.cpp
+	mcp/GameStateSnapshot.cpp
+	mcp/McpServer.cpp
 	NetPacksClient.cpp
 	NetPacksLobbyClient.cpp
 	ServerRunner.cpp
@@ -430,6 +432,8 @@ set(vcmiclientcommon_HEADERS
 	ClientCommandManager.h
 	ClientNetPackVisitors.h
 	HeroMovementController.h
+	mcp/GameStateSnapshot.h
+	mcp/McpServer.h
 	GameChatHandler.h
 	LobbyClientNetPackVisitors.h
 	ServerRunner.h
@@ -458,6 +462,7 @@ if(WIN32)
 	)
 	set_property(DIRECTORY ${CMAKE_SOURCE_DIR} PROPERTY VS_STARTUP_PROJECT vcmiclientcommon)
 	target_compile_definitions(vcmiclientcommon PRIVATE WINDOWS_IGNORE_PACKING_MISMATCH)
+	target_link_libraries(vcmiclientcommon PRIVATE ws2_32)
 elseif(IOS)
 	target_link_libraries(vcmiclientcommon PRIVATE
 		iOS_utils
