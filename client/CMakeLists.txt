@@ -198,6 +198,7 @@ set(vcmiclientcommon_SRCS
 	ClientCommandManager.cpp
 	GameChatHandler.cpp
 	HeroMovementController.cpp
+	mcp/GameActions.cpp
 	mcp/GameStateSnapshot.cpp
 	mcp/McpServer.cpp
 	NetPacksClient.cpp
@@ -432,6 +433,7 @@ set(vcmiclientcommon_HEADERS
 	ClientCommandManager.h
 	ClientNetPackVisitors.h
 	HeroMovementController.h
+	mcp/GameActions.h
 	mcp/GameStateSnapshot.h
 	mcp/McpServer.h
 	GameChatHandler.h

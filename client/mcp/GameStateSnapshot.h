@@ -12,5 +12,5 @@
 #include <string>
 
 /// Text description of what the current human player can see.
-/// Call only on the GUI thread, while holding the interface mutex and a shared game-state lock.
+/// Call only on the GUI thread, while holding the interface mutex.
 std::string buildMcpGameState();

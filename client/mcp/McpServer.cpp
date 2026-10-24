@@ -11,10 +11,10 @@
 #include "McpServer.h"
 
 #include "GameEngine.h"
+#include "GameActions.h"
 #include "GameStateSnapshot.h"
 
 #include "../lib/CThreadHelper.h"
-#include "../lib/gameState/CGameState.h"
 #include "../lib/json/JsonNode.h"
 
 #include <boost/asio.hpp>
@@ -183,6 +183,44 @@ JsonNode parseJson(const std::string & body)
 	return JsonNode(body.data(), body.size(), parsing, std::string("mcp"));
 }
 
+JsonNode jsonString(const std::string & value)
+{
+	JsonNode node;
+	node.String() = value;
+	return node;
+}
+
+JsonNode integerProperty(const std::string & description)
+{
+	JsonNode property;
+	property["type"].String() = "integer";
+	property["description"].String() = description;
+	return property;
+}
+
+std::optional<int> readInt(const JsonNode & node, std::string & error, const std::string & name, bool required)
+{
+	if(node.isNull())
+	{
+		if(required)
+			error = "error: " + name + " is required";
+		return std::nullopt;
+	}
+	if(!node.isNumber())
+	{
+		error = "error: " + name + " must be an integer";
+		return std::nullopt;
+	}
+
+	const si64 value = node.Integer();
+	if(value < std::numeric_limits<int>::min() || value > std::numeric_limits<int>::max())
+	{
+		error = "error: " + name + " is out of range";
+		return std::nullopt;
+	}
+	return static_cast<int>(value);
+}
+
 }
 
 struct McpServer::Impl
@@ -274,14 +312,34 @@ struct McpServer::Impl
 
 		if(method == "tools/list")
 		{
-			JsonNode tool;
-			tool["name"].String() = "get_state";
-			tool["description"].String() = "Text snapshot of the visible game: date, resources, your heroes and towns, visible map objects, and the current battle.";
-			tool["inputSchema"]["type"].String() = "object";
-			tool["inputSchema"]["properties"].Struct();
+			JsonNode state;
+			state["name"].String() = "get_state";
+			state["description"].String() = "Text snapshot of the visible game: date, resources, your heroes and towns, visible map objects, and the current battle.";
+			state["inputSchema"]["type"].String() = "object";
+			state["inputSchema"]["properties"].Struct();
+
+			JsonNode move;
+			move["name"].String() = "move_hero";
+			move["description"].String() = "Walk the selected hero toward a map tile. Uses the hero's remaining movement and stops at a monster to attack it. z defaults to the hero's floor. hero defaults to the hero selected on the adventure map, or your first hero.";
+			move["inputSchema"]["type"].String() = "object";
+			move["inputSchema"]["properties"]["x"] = integerProperty("Map column.");
+			move["inputSchema"]["properties"]["y"] = integerProperty("Map row.");
+			move["inputSchema"]["properties"]["z"] = integerProperty("Map floor, 0 for the surface.");
+			move["inputSchema"]["properties"]["hero"] = integerProperty("Hero id from get_state. Omit to move the current hero.");
+			move["inputSchema"]["required"].Vector().push_back(jsonString("x"));
+			move["inputSchema"]["required"].Vector().push_back(jsonString("y"));
+
+			JsonNode attack;
+			attack["name"].String() = "attack";
+			attack["description"].String() = "In a battle, attack an enemy stack with the active unit. Shoots when the unit can shoot. Otherwise walks up and strikes in melee.";
+			attack["inputSchema"]["type"].String() = "object";
+			attack["inputSchema"]["properties"]["stack"] = integerProperty("Enemy stack id from get_state.");
+			attack["inputSchema"]["required"].Vector().push_back(jsonString("stack"));
 
 			JsonNode result;
-			result["tools"].Vector().push_back(std::move(tool));
+			result["tools"].Vector().push_back(std::move(state));
+			result["tools"].Vector().push_back(std::move(move));
+			result["tools"].Vector().push_back(std::move(attack));
 			response.body = jsonResult(request, std::move(result));
 			return response;
 		}
@@ -296,13 +354,49 @@ struct McpServer::Impl
 			}
 
 			const std::string name = params["name"].String();
-			if(name != "get_state")
+			const JsonNode & arguments = params["arguments"];
+			if(!arguments.isNull() && !arguments.isStruct())
+			{
+				response.body = jsonToolResult(request, "error: arguments must be an object", true);
+				return response;
+			}
+
+			std::string text;
+			if(name == "get_state")
+			{
+				text = callOnGui([] { return buildMcpGameState(); });
+			}
+			else if(name == "move_hero")
+			{
+				std::string error;
+				const std::optional<int> x = readInt(arguments["x"], error, "x", true);
+				const std::optional<int> y = readInt(arguments["y"], error, "y", true);
+				const std::optional<int> z = readInt(arguments["z"], error, "z", false);
+				const std::optional<int> hero = readInt(arguments["hero"], error, "hero", false);
+				if(!error.empty() || !x || !y)
+				{
+					response.body = jsonToolResult(request, error.empty() ? "error: x and y are required" : error, true);
+					return response;
+				}
+				text = callOnGui([x, y, z, hero] { return mcpMoveHero(*x, *y, z, hero); });
+			}
+			else if(name == "attack")
+			{
+				std::string error;
+				const std::optional<int> stack = readInt(arguments["stack"], error, "stack", true);
+				if(!error.empty() || !stack)
+				{
+					response.body = jsonToolResult(request, error.empty() ? "error: stack is required" : error, true);
+					return response;
+				}
+				text = callOnGui([stack] { return mcpAttack(*stack); });
+			}
+			else
 			{
 				response.body = jsonToolResult(request, "Unknown tool: " + name, true);
 				return response;
 			}
 
-			const std::string text = callOnGui([] { return buildMcpGameState(); });
 			const bool failed = text.rfind("Timed out", 0) == 0 || text.rfind("MCP server", 0) == 0 || text.rfind("error:", 0) == 0;
 			response.body = jsonToolResult(request, text, failed);
 			return response;
@@ -423,7 +517,6 @@ void McpServer::drain()
 	}
 
 	std::scoped_lock interfaceLock(ENGINE->interfaceMutex);
-	std::shared_lock stateLock(CGameState::mutex);
 	for(const Impl::Job & job : jobs)
 	{
 		if(impl->stopping.load())

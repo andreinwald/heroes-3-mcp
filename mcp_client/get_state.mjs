@@ -1,6 +1,8 @@
 import http from "node:http";
 
 // Same port as McpServer::port in client/mcp/McpServer.h
+// node get_state.mjs [x y z]
+// With no coordinates, the first hero on the map walks 3 tiles east.
 const port = 47321;
 
 function post(message) {
@@ -49,6 +51,25 @@ function post(message) {
 	});
 }
 
+async function callTool(id, name, arguments_) {
+	const called = await post({
+		jsonrpc: "2.0",
+		id,
+		method: "tools/call",
+		params: { name, arguments: arguments_ },
+	});
+
+	if (!called)
+		throw new Error(`Empty response from ${name}`);
+	if (called.error)
+		throw new Error(called.error.message ?? `${name} failed`);
+
+	const text = called.result?.content?.[0]?.text;
+	if (typeof text !== "string")
+		throw new Error(`Unexpected result: ${JSON.stringify(called)}`);
+	return { text, isError: called.result?.isError === true };
+}
+
 const initialized = await post({
 	jsonrpc: "2.0",
 	id: 1,
@@ -68,22 +89,44 @@ await post({
 	method: "notifications/initialized",
 });
 
-const called = await post({
-	jsonrpc: "2.0",
-	id: 2,
-	method: "tools/call",
-	params: { name: "get_state", arguments: {} },
+const state = await callTool(2, "get_state", {});
+process.stdout.write(state.text.endsWith("\n") ? state.text : `${state.text}\n`);
+if (state.isError)
+	process.exit(1);
+
+const hero = state.text.match(/^hero id=(\d+) .* pos=(-?\d+),(-?\d+),(-?\d+) .* garrison=no/m);
+const map = state.text.match(/^map width=(\d+) height=(\d+) levels=(\d+)/m);
+if (!hero || !map) {
+	process.stdout.write("error: no wandering hero to move\n");
+	process.exit(1);
+}
+
+const args = process.argv.slice(2);
+let x;
+let y;
+let z;
+if (args.length >= 2) {
+	x = Number(args[0]);
+	y = Number(args[1]);
+	z = args.length >= 3 ? Number(args[2]) : Number(hero[4]);
+	if (![x, y, z].every(Number.isInteger))
+		throw new Error("Usage: node get_state.mjs [x y z]");
+} else {
+	const width = Number(map[1]);
+	x = Number(hero[2]) + 3;
+	y = Number(hero[3]);
+	z = Number(hero[4]);
+	if (x >= width)
+		x = Number(hero[2]) - 3;
+}
+
+const move = await callTool(3, "move_hero", {
+	hero: Number(hero[1]),
+	x,
+	y,
+	z,
 });
-
-if (!called)
-	throw new Error("Empty response from get_state");
-if (called.error)
-	throw new Error(called.error.message ?? "get_state failed");
-
-const text = called.result?.content?.[0]?.text;
-if (called.result?.isError)
-	throw new Error(text || "get_state failed");
-if (typeof text !== "string")
-	throw new Error(`Unexpected result: ${JSON.stringify(called)}`);
-
-process.stdout.write(text.endsWith("\n") ? text : `${text}\n`);
+process.stdout.write("------------------\n");
+process.stdout.write(move.text.endsWith("\n") ? move.text : `${move.text}\n`);
+if (move.isError)
+	process.exit(1);

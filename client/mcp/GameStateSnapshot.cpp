@@ -29,6 +29,7 @@
 #include "../lib/mapObjects/CGTownInstance.h"
 #include "../lib/mapObjects/army/CCreatureSet.h"
 #include "../lib/CStack.h"
+#include "../lib/gameState/CGameState.h"
 #include "../lib/texts/MetaString.h"
 
 namespace
@@ -375,6 +376,8 @@ std::string buildMcpGameState()
 {
 	if(!GAME || !GAME->interface() || !GAME->interface()->cb)
 		return "No game is in progress.\n";
+
+	std::shared_lock stateLock(CGameState::mutex);
 
 	CPlayerInterface & interface = *GAME->interface();
 	CCallback & cb = *interface.cb;
