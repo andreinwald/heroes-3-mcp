@@ -314,7 +314,7 @@ struct McpServer::Impl
 		{
 			JsonNode state;
 			state["name"].String() = "get_state";
-			state["description"].String() = "Text snapshot of the visible game: date, resources, your heroes and towns, visible map objects, blocking dialogs with numbered choices, and the current battle.";
+			state["description"].String() = "Text snapshot of the visible game: date, resources, your heroes and towns, visible map objects, blocking dialogs with numbered choices, and the current battle (active_turn=yours|enemy|busy|none; call attack/wait/defend only when active_turn=yours).";
 			state["inputSchema"]["type"].String() = "object";
 			state["inputSchema"]["properties"].Struct();
 

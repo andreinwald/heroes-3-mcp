@@ -16,6 +16,7 @@
 #include "PlayerLocalState.h"
 #include "adventureMap/AdventureMapInterface.h"
 #include "battle/BattleInterface.h"
+#include "battle/BattleStacksController.h"
 #include "gui/WindowHandler.h"
 #include "widgets/CComponent.h"
 #include "windows/CExchangeWindow.h"
@@ -73,6 +74,37 @@ std::string field(const std::string & key, const std::string & value)
 std::string posText(const int3 & pos)
 {
 	return std::to_string(pos.x) + "," + std::to_string(pos.y) + "," + std::to_string(pos.z);
+}
+
+/// When the battle window is open, only its active stack may act (see BattleInterface::makingTurn).
+std::string battleActorReady(const BattleID battleID, const CPlayerBattleCallback & battle, const CStack *& actorStack)
+{
+	std::shared_ptr<BattleInterface> battleUi = CPlayerInterface::battleInt;
+	if(battleUi && battleUi->getBattleID() == battleID)
+	{
+		if(battleUi->hasAnimations())
+			return "error: battle animations are playing";
+		if(!battleUi->makingTurn())
+			return "error: wait for the current battle action to finish";
+
+		actorStack = battleUi->stacksController->getActiveStack();
+		if(!actorStack || !actorStack->alive())
+			return "error: no stack is ready to act";
+		if(actorStack->unitSide() != battle.battleGetMySide())
+			return "error: it is not your stack's turn";
+		return {};
+	}
+
+	const battle::Unit * actor = battle.battleActiveUnit();
+	if(!actor || !actor->alive())
+		return "error: no stack is waiting to act";
+	if(actor->unitSide() != battle.battleGetMySide())
+		return "error: it is not your stack's turn";
+
+	actorStack = dynamic_cast<const CStack *>(actor);
+	if(!actorStack)
+		return "error: active unit is not a stack";
+	return {};
 }
 
 std::string creatureName(const battle::Unit & unit)
@@ -249,11 +281,11 @@ std::string mcpAttack(int stackId)
 	if(battle.battleTacticDist() > 0)
 		return "error: the tactics phase is still going";
 
-	const battle::Unit * actor = battle.battleActiveUnit();
-	if(!actor || !actor->alive())
-		return "error: no stack is waiting to act";
-	if(actor->unitSide() != battle.battleGetMySide())
-		return "error: it is not your stack's turn";
+	const CStack * actorStack = nullptr;
+	const std::string readyError = battleActorReady(battleID, battle, actorStack);
+	if(!readyError.empty())
+		return readyError;
+	const battle::Unit * actor = actorStack;
 
 	const battle::Unit * target = battle.battleGetUnitByID(static_cast<uint32_t>(stackId));
 	if(!target)
@@ -320,9 +352,8 @@ std::string mcpAttack(int stackId)
 		result += " " + field("from", std::to_string(attackFrom.toInt()));
 	result += "\n";
 
-	const CStack * actorStack = dynamic_cast<const CStack *>(actor);
 	std::shared_ptr<BattleInterface> battleUi = CPlayerInterface::battleInt;
-	const bool useWindow = battleUi && battleUi->getBattleID() == battleID && actorStack;
+	const bool useWindow = battleUi && battleUi->getBattleID() == battleID;
 
 	stateLock.unlock();
 
@@ -357,20 +388,15 @@ std::string mcpBattleWait()
 	if(battle.battleTacticDist() > 0)
 		return "error: the tactics phase is still going";
 
-	const battle::Unit * actor = battle.battleActiveUnit();
-	if(!actor || !actor->alive())
-		return "error: no stack is waiting to act";
-	if(actor->unitSide() != battle.battleGetMySide())
-		return "error: it is not your stack's turn";
-
-	const CStack * actorStack = dynamic_cast<const CStack *>(actor);
-	if(!actorStack)
-		return "error: active unit is not a stack";
+	const CStack * actorStack = nullptr;
+	const std::string readyError = battleActorReady(battleID, battle, actorStack);
+	if(!readyError.empty())
+		return readyError;
 	if(actorStack->waitedThisRound())
-		return "error: " + creatureName(*actor) + " already waited this round";
+		return "error: " + creatureName(*actorStack) + " already waited this round";
 
 	const BattleAction action = BattleAction::makeWait(actorStack);
-	std::string result = "wait stack=" + std::to_string(actor->unitId()) + " creature=" + creatureName(*actor) + "\n";
+	std::string result = "wait stack=" + std::to_string(actorStack->unitId()) + " creature=" + creatureName(*actorStack) + "\n";
 
 	std::shared_ptr<BattleInterface> battleUi = CPlayerInterface::battleInt;
 	const bool useWindow = battleUi && battleUi->getBattleID() == battleID;
@@ -408,18 +434,13 @@ std::string mcpBattleDefend()
 	if(battle.battleTacticDist() > 0)
 		return "error: the tactics phase is still going";
 
-	const battle::Unit * actor = battle.battleActiveUnit();
-	if(!actor || !actor->alive())
-		return "error: no stack is waiting to act";
-	if(actor->unitSide() != battle.battleGetMySide())
-		return "error: it is not your stack's turn";
-
-	const CStack * actorStack = dynamic_cast<const CStack *>(actor);
-	if(!actorStack)
-		return "error: active unit is not a stack";
+	const CStack * actorStack = nullptr;
+	const std::string readyError = battleActorReady(battleID, battle, actorStack);
+	if(!readyError.empty())
+		return readyError;
 
 	const BattleAction action = BattleAction::makeDefend(actorStack);
-	std::string result = "defend stack=" + std::to_string(actor->unitId()) + " creature=" + creatureName(*actor) + "\n";
+	std::string result = "defend stack=" + std::to_string(actorStack->unitId()) + " creature=" + creatureName(*actorStack) + "\n";
 
 	std::shared_ptr<BattleInterface> battleUi = CPlayerInterface::battleInt;
 	const bool useWindow = battleUi && battleUi->getBattleID() == battleID;

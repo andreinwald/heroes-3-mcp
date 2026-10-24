@@ -9,7 +9,7 @@ export const tools = [
 	{
 		name: "get_state",
 		description:
-			"Text snapshot of the visible game: date, resources, your heroes and towns, visible map objects, blocking dialogs with numbered choices, and the current battle.",
+			"Text snapshot of the visible game: date, resources, your heroes and towns, visible map objects, blocking dialogs with numbered choices, and the current battle (active_turn=yours|enemy|busy|none; call attack/wait/defend only when active_turn=yours).",
 		inputSchema: { type: "object", properties: {} },
 	},
 	{

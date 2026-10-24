@@ -11,6 +11,7 @@
 #include "GameStateSnapshot.h"
 
 #include "CPlayerInterface.h"
+#include "battle/BattleInterface.h"
 #include "GameEngine.h"
 #include "GameInstance.h"
 #include "gui/WindowHandler.h"
@@ -321,7 +322,15 @@ void appendBattle(std::string & out, CCallback & cb, const ITranslator & transla
 		if(const battle::Unit * active = battle->battleActiveUnit())
 		{
 			out += " " + field("active", std::to_string(active->unitId()));
-			out += " " + field("active_turn", active->unitSide() == battle->battleGetMySide() ? "yours" : "enemy");
+			const BattleSide mySide = battle->battleGetMySide();
+			const char * turn = active->unitSide() == mySide ? "yours" : "enemy";
+			if(active->unitSide() == mySide)
+			{
+				if(const std::shared_ptr<BattleInterface> battleUi = CPlayerInterface::battleInt;
+					battleUi && battleUi->getBattleID() == battleID && (battleUi->hasAnimations() || !battleUi->makingTurn()))
+					turn = "busy";
+			}
+			out += " " + field("active_turn", turn);
 		}
 		else
 		{
