@@ -14,3 +14,6 @@
 /// Text description of what the current human player can see.
 /// Call only on the GUI thread, while holding the interface mutex.
 std::string buildMcpGameState();
+
+/// Visible road tiles. Call only on the GUI thread, while holding the interface mutex.
+std::string buildMcpMapState();

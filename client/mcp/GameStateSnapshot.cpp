@@ -22,7 +22,9 @@
 #include "../lib/CSkillHandler.h"
 #include "../lib/ConditionalWait.h"
 #include "../lib/GameLibrary.h"
+#include "../lib/RoadHandler.h"
 #include "../lib/TerrainHandler.h"
+#include "../lib/mapping/TerrainTile.h"
 #include "../lib/entities/hero/CHeroClass.h"
 #include "../lib/gameState/InfoAboutArmy.h"
 #include "../lib/battle/BattleSide.h"
@@ -405,6 +407,116 @@ void appendCaught(std::string & out, const std::string & kind, int id, const std
 	out += "\n";
 }
 
+std::string roadTypeName(const RoadType & road)
+{
+	std::string key = road.getJsonKey();
+	const auto colon = key.rfind(':');
+	if(colon != std::string::npos)
+		key = key.substr(colon + 1);
+	if(key.size() > 4 && key.compare(key.size() - 4, 4, "Road") == 0)
+		key.resize(key.size() - 4);
+	return key;
+}
+
+void appendRoads(std::string & out, CCallback & cb)
+{
+	const int3 mapSize = cb.getMapSize();
+
+	struct RoadTile
+	{
+		int3 pos;
+		std::string type;
+	};
+
+	std::vector<RoadTile> tiles;
+	for(int z = 0; z < mapSize.z; ++z)
+	{
+		for(int y = 0; y < mapSize.y; ++y)
+		{
+			for(int x = 0; x < mapSize.x; ++x)
+			{
+				const int3 pos(x, y, z);
+				const TerrainTile * tile = cb.tryGetTile(pos);
+				if(!tile || !tile->hasRoad())
+					continue;
+				const RoadType * road = tile->getRoad();
+				if(!road)
+					continue;
+				tiles.push_back({pos, roadTypeName(*road)});
+			}
+		}
+	}
+
+	if(tiles.empty())
+	{
+		out += "roads: none\n";
+		return;
+	}
+
+	std::sort(tiles.begin(), tiles.end(), [](const RoadTile & left, const RoadTile & right)
+	{
+		if(left.type != right.type)
+			return left.type < right.type;
+		if(left.pos.z != right.pos.z)
+			return left.pos.z < right.pos.z;
+		if(left.pos.y != right.pos.y)
+			return left.pos.y < right.pos.y;
+		return left.pos.x < right.pos.x;
+	});
+
+	std::string currentType;
+	int currentZ = -1;
+	std::string coords;
+	int runY = -1;
+	int runStartX = -1;
+	int runEndX = -1;
+
+	const auto flushRun = [&]()
+	{
+		if(runStartX < 0)
+			return;
+		if(!coords.empty())
+			coords += " ";
+		coords += std::to_string(runStartX) + "," + std::to_string(runY);
+		if(runEndX != runStartX)
+			coords += "-" + std::to_string(runEndX) + "," + std::to_string(runY);
+		runStartX = -1;
+		runEndX = -1;
+		runY = -1;
+	};
+
+	const auto flushLine = [&]()
+	{
+		flushRun();
+		if(coords.empty())
+			return;
+		out += "road " + field("type", currentType) + " " + field("z", std::to_string(currentZ)) + " " + field("tiles", coords) + "\n";
+		coords.clear();
+	};
+
+	for(const RoadTile & tile : tiles)
+	{
+		if(tile.type != currentType || tile.pos.z != currentZ)
+		{
+			flushLine();
+			currentType = tile.type;
+			currentZ = tile.pos.z;
+		}
+
+		if(runStartX >= 0 && tile.pos.y == runY && tile.pos.x == runEndX + 1)
+		{
+			runEndX = tile.pos.x;
+			continue;
+		}
+
+		flushRun();
+		runY = tile.pos.y;
+		runStartX = tile.pos.x;
+		runEndX = tile.pos.x;
+	}
+	flushLine();
+}
+
 }
 
 std::string buildMcpGameState()
@@ -575,5 +687,25 @@ std::string buildMcpGameState()
 		out += "battle " + field("error", error.what()) + "\n";
 	}
 
+	return out;
+}
+
+std::string buildMcpMapState()
+{
+	if(!GAME || !GAME->interface() || !GAME->interface()->cb)
+		return "No game is in progress.\n";
+
+	std::shared_lock stateLock(CGameState::mutex);
+
+	CCallback & cb = *GAME->interface()->cb;
+	const int3 mapSize = cb.getMapSize();
+
+	std::string out;
+	out += "map";
+	out += " " + field("width", std::to_string(mapSize.x));
+	out += " " + field("height", std::to_string(mapSize.y));
+	out += " " + field("levels", std::to_string(mapSize.z));
+	out += "\n";
+	appendRoads(out, cb);
 	return out;
 }

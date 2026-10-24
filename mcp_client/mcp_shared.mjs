@@ -9,7 +9,13 @@ export const tools = [
 	{
 		name: "get_state",
 		description:
-			"Text snapshot of the visible game: date, resources, heroes, visible towns (pos, owner, relation=enemy|ally|neutral), map objects, the top blocking dialog with numbered choices (use answer), and the current battle (active_turn=yours|enemy|busy|none; call attack/wait/defend only when active_turn=yours).",
+			"Text snapshot of the visible game: date, resources, heroes, visible towns (pos, owner, relation=enemy|ally|neutral), map objects, the top blocking dialog with numbered choices (use answer), and the current battle (active_turn=yours|enemy|busy|none; call attack/wait/defend only when active_turn=yours). Roads are in get_map, not here.",
+		inputSchema: { type: "object", properties: {} },
+	},
+	{
+		name: "get_map",
+		description:
+			"Visible road tiles for pathing. Fog-of-war only: tiles the player cannot see are omitted. Horizontal runs are compacted (8,4-14,4). Use these coordinates with move_hero; objects and armies stay in get_state.",
 		inputSchema: { type: "object", properties: {} },
 	},
 	{

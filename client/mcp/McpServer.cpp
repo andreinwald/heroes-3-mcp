@@ -327,9 +327,15 @@ struct McpServer::Impl
 		{
 			JsonNode state;
 			state["name"].String() = "get_state";
-			state["description"].String() = "Text snapshot of the visible game: date, resources, heroes, visible towns (pos, owner, relation=enemy|ally|neutral), map objects, blocking dialogs with numbered choices, and the current battle (active_turn=yours|enemy|busy|none; call attack/wait/defend only when active_turn=yours).";
+			state["description"].String() = "Text snapshot of the visible game: date, resources, heroes, visible towns (pos, owner, relation=enemy|ally|neutral), map objects, blocking dialogs with numbered choices, and the current battle (active_turn=yours|enemy|busy|none; call attack/wait/defend only when active_turn=yours). Roads are in get_map, not here.";
 			state["inputSchema"]["type"].String() = "object";
 			state["inputSchema"]["properties"].Struct();
+
+			JsonNode map;
+			map["name"].String() = "get_map";
+			map["description"].String() = "Visible road tiles for pathing. Fog-of-war only: tiles the player cannot see are omitted. Horizontal runs are compacted (8,4-14,4). Use these coordinates with move_hero; objects and armies stay in get_state.";
+			map["inputSchema"]["type"].String() = "object";
+			map["inputSchema"]["properties"].Struct();
 
 			JsonNode move;
 			move["name"].String() = "move_hero";
@@ -377,6 +383,7 @@ struct McpServer::Impl
 
 			JsonNode result;
 			result["tools"].Vector().push_back(std::move(state));
+			result["tools"].Vector().push_back(std::move(map));
 			result["tools"].Vector().push_back(std::move(move));
 			result["tools"].Vector().push_back(std::move(attack));
 			result["tools"].Vector().push_back(std::move(wait));
@@ -408,6 +415,10 @@ struct McpServer::Impl
 			if(name == "get_state")
 			{
 				text = callOnGui([] { return buildMcpGameState(); });
+			}
+			else if(name == "get_map")
+			{
+				text = callOnGui([] { return buildMcpMapState(); });
 			}
 			else if(name == "move_hero")
 			{
