@@ -87,6 +87,11 @@ void CTutorialWindow::exit()
 	close();
 }
 
+void CTutorialWindow::dismissForMcp()
+{
+	exit();
+}
+
 void CTutorialWindow::next()
 {
 	page++;

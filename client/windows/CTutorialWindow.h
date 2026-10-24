@@ -47,5 +47,7 @@ class CTutorialWindow : public CWindowObject
 
 public:
 	CTutorialWindow(const TutorialMode & m);
-	static void openWindowFirstTime(const TutorialMode & m);	
+	static void openWindowFirstTime(const TutorialMode & m);
+
+	void dismissForMcp();
 };

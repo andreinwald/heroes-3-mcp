@@ -921,6 +921,39 @@ void CStackWindow::answer(ui32 selection)
 		owner->cb->selectionMade(selection, questionID);
 }
 
+std::string CStackWindow::commanderLevelUpSkillLabel(ui32 skillId) const
+{
+	return getCommanderSkillDescription(skillId, 1);
+}
+
+std::vector<ui32> CStackWindow::commanderLevelUpSkillChoices() const
+{
+	if(!isCommanderLevelUpDialog() || !info->levelupInfo)
+		return {};
+	return info->levelupInfo->skills;
+}
+
+bool CStackWindow::applyMcpCommanderLevelUpChoice(ui32 skillId)
+{
+	if(!isCommanderLevelUpDialog() || selectionSubmitted)
+		return false;
+	if(!info->levelupInfo)
+		return false;
+
+	if(info->levelupInfo->skills.empty())
+	{
+		submitSelection();
+		return true;
+	}
+
+	if(!vstd::contains(info->levelupInfo->skills, skillId))
+		return false;
+
+	selectedSkill = skillId;
+	submitSelection();
+	return true;
+}
+
 void CStackWindow::close()
 {
 	if(!selectionSubmitted && info->levelupInfo && !info->levelupInfo->skills.empty())
@@ -1143,7 +1176,7 @@ void CStackWindow::showStackExperienceDetailsWindow()
 	ENGINE->windows().pushWindow(std::static_pointer_cast<IShowActivatable>(detailsWindow));
 }
 
-std::string CStackWindow::getCommanderSkillDescription(int skillIndex, int skillLevel)
+std::string CStackWindow::getCommanderSkillDescription(int skillIndex, int skillLevel) const
 {
 	constexpr std::array skillNames = {
 		"attack",

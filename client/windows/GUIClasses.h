@@ -173,6 +173,10 @@ public:
 	CLevelWindow(CPlayerInterface * askedInterface, const CGHeroInstance *hero, PrimarySkill pskill, const std::vector<SecondarySkill> &skills, bool moreLevels, QuestionID question);
 	void updateLevelUpData(CPlayerInterface * askedInterface, const CGHeroInstance * heroInstance, PrimarySkill pskill, const std::vector<SecondarySkill> & availableSkills, bool moreLevels, QuestionID question);
 
+	bool applyMcpLevelUpChoice(int skillIndex);
+	const std::vector<SecondarySkill> & levelUpSkills() const;
+	const CGHeroInstance * levelUpHero() const;
+
 	void close() override;
 
 private:

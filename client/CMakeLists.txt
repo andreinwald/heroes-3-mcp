@@ -201,6 +201,7 @@ set(vcmiclientcommon_SRCS
 	mcp/GameActions.cpp
 	mcp/GameStateSnapshot.cpp
 	mcp/McpBattleWaiter.cpp
+	mcp/McpDialogs.cpp
 	mcp/McpServer.cpp
 	NetPacksClient.cpp
 	NetPacksLobbyClient.cpp
@@ -437,6 +438,7 @@ set(vcmiclientcommon_HEADERS
 	mcp/GameActions.h
 	mcp/GameStateSnapshot.h
 	mcp/McpBattleWaiter.h
+	mcp/McpDialogs.h
 	mcp/McpServer.h
 	GameChatHandler.h
 	LobbyClientNetPackVisitors.h

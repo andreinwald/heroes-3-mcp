@@ -282,3 +282,8 @@ void BattleResultWindow::bRepeatf()
 {
 	buttonPressed(1);
 }
+
+bool BattleResultWindow::hasReplayButton() const
+{
+	return repeat != nullptr;
+}

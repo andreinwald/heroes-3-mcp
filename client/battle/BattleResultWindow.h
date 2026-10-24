@@ -54,5 +54,7 @@ public:
 	void bRepeatf(); //repeat button callback
 	std::function<void(int result)> resultCallback; //callback receiving which button was pressed
 
+	bool hasReplayButton() const;
+
 	void activate() override;
 };

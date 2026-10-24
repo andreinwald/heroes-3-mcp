@@ -9,6 +9,7 @@
  */
 #include "StdInc.h"
 #include "GameStateSnapshot.h"
+#include "McpDialogs.h"
 
 #include "CPlayerInterface.h"
 #include "battle/BattleInterface.h"
@@ -17,9 +18,6 @@
 #include "gui/WindowHandler.h"
 #include "widgets/CComponent.h"
 #include "widgets/TextControls.h"
-#include "windows/CExchangeWindow.h"
-#include "windows/GUIClasses.h"
-#include "windows/InfoWindows.h"
 
 #include "../lib/CSkillHandler.h"
 #include "../lib/ConditionalWait.h"
@@ -392,137 +390,6 @@ void appendCaught(std::string & out, const std::string & kind, int id, const std
 	out += "\n";
 }
 
-const char * componentTypeName(ComponentType type)
-{
-	switch(type)
-	{
-		case ComponentType::RESOURCE:
-			return "resource";
-		case ComponentType::EXPERIENCE:
-			return "experience";
-		case ComponentType::ARTIFACT:
-			return "artifact";
-		case ComponentType::CREATURE:
-			return "creature";
-		case ComponentType::SPELL:
-			return "spell";
-		case ComponentType::SEC_SKILL:
-			return "skill";
-		case ComponentType::PRIM_SKILL:
-			return "primary";
-		case ComponentType::MANA:
-			return "mana";
-		case ComponentType::MORALE:
-			return "morale";
-		case ComponentType::LUCK:
-			return "luck";
-		default:
-			return "item";
-	}
-}
-
-void appendComponentOption(std::string & out, int choice, const CComponent & component)
-{
-	out += "  option";
-	out += " " + field("choice", std::to_string(choice));
-	out += " " + field("type", componentTypeName(component.data.type));
-	if(component.data.type == ComponentType::RESOURCE)
-	{
-		const GameResID resourceId = component.data.subType.as<GameResID>();
-		if(resourceId.hasValue())
-		{
-			if(const auto * resource = LIBRARY->resourceTypeHandler->getById(resourceId))
-				out += " " + field("name", resource->getNameTranslated());
-		}
-	}
-	const std::string subtitle = component.getSubtitle();
-	if(!subtitle.empty())
-		out += " " + field("label", subtitle);
-	out += "\n";
-}
-
-void appendInfoWindow(std::string & out, const CInfoWindow & window)
-{
-	const bool choose = dynamic_cast<const CSelWindow *>(&window) != nullptr;
-	const bool yesNo = !choose && window.buttons.size() >= 2;
-	const bool hasQuestion = window.ID.getNum() >= 0;
-
-	out += "dialog";
-	out += " blocking=yes";
-	if(hasQuestion)
-		out += " " + field("question", std::to_string(window.ID.getNum()));
-	out += " " + field("type", choose ? "choose" : (yesNo ? "yes_no" : "info"));
-	out += "\n";
-
-	if(window.text && window.text->label)
-	{
-		const std::string text = window.text->label->getText();
-		if(!text.empty())
-			out += "  text: " + quote(text) + "\n";
-	}
-
-	if(choose && window.components)
-	{
-		int choice = 1;
-		for(const auto & component : window.components->getComponents())
-		{
-			if(component)
-				appendComponentOption(out, choice++, *component);
-		}
-		if(window.buttons.size() > 1)
-			out += "  option " + field("choice", "0") + " name=cancel\n";
-	}
-	else if(yesNo)
-	{
-		out += "  option " + field("choice", "1") + " name=yes\n";
-		out += "  option " + field("choice", "0") + " name=no\n";
-	}
-	else
-	{
-		out += "  option " + field("choice", "1") + " name=ok\n";
-	}
-}
-
-void appendDialogs(std::string & out, CPlayerInterface & interface)
-{
-	bool wrote = false;
-
-	if(ENGINE)
-	{
-		for(const auto & window : ENGINE->windows().findWindows<CInfoWindow>())
-		{
-			if(!window)
-				continue;
-			appendInfoWindow(out, *window);
-			wrote = true;
-		}
-
-		for(const auto & window : ENGINE->windows().findWindows<CLevelWindow>())
-		{
-			if(!window)
-				continue;
-			out += "dialog blocking=yes type=level_up\n";
-			out += "  text: \"Choose a skill for the level-up.\"\n";
-			wrote = true;
-		}
-
-		for(const auto & window : ENGINE->windows().findWindows<CExchangeWindow>())
-		{
-			if(!window)
-				continue;
-			out += "dialog blocking=yes type=exchange";
-			if(window->getQuestionID().getNum() >= 0)
-				out += " " + field("question", std::to_string(window->getQuestionID().getNum()));
-			out += "\n";
-			out += "  option " + field("choice", "0") + " name=leave\n";
-			wrote = true;
-		}
-	}
-
-	if(!wrote && interface.showingDialog && interface.showingDialog->isBusy())
-		out += "dialog blocking=yes type=unknown\n";
-}
-
 }
 
 std::string buildMcpGameState()
@@ -574,7 +441,7 @@ std::string buildMcpGameState()
 		out += " autofight=yes";
 	out += "\n";
 
-	appendDialogs(out, interface);
+	appendMcpDialogs(out, interface);
 
 	auto heroes = cb.getHeroesInfo();
 	std::sort(heroes.begin(), heroes.end(), [](const CGHeroInstance * left, const CGHeroInstance * right)

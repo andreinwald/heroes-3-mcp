@@ -9,7 +9,7 @@ export const tools = [
 	{
 		name: "get_state",
 		description:
-			"Text snapshot of the visible game: date, resources, your heroes and towns, visible map objects, blocking dialogs with numbered choices, and the current battle (active_turn=yours|enemy|busy|none; call attack/wait/defend only when active_turn=yours).",
+			"Text snapshot of the visible game: date, resources, your heroes and towns, visible map objects, the top blocking dialog with numbered choices (use answer), and the current battle (active_turn=yours|enemy|busy|none; call attack/wait/defend only when active_turn=yours).",
 		inputSchema: { type: "object", properties: {} },
 	},
 	{
@@ -54,7 +54,7 @@ export const tools = [
 	{
 		name: "answer",
 		description:
-			"Pick an option on the open blocking dialog. choice is the number from get_state: 1 or 2 for gold vs experience, 1=yes 0=no, 0=cancel when listed.",
+			"Pick an option on the top blocking dialog from get_state: treasure choose 1/2, yes_no 1/0, info ok=1, battle_result ok=0 repeat=1, level_up skill index, commander_level_up skill id, exchange leave=0, tutorial ok=1.",
 		inputSchema: {
 			type: "object",
 			properties: {

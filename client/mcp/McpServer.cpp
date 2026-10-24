@@ -351,7 +351,7 @@ struct McpServer::Impl
 
 			JsonNode answer;
 			answer["name"].String() = "answer";
-			answer["description"].String() = "Pick an option on the open blocking dialog. choice is the number from get_state: 1 or 2 for gold vs experience, 1=yes 0=no, 0=cancel when listed.";
+			answer["description"].String() = "Pick an option on the top blocking dialog from get_state (info/choose/yes_no, battle_result ok=0 repeat=1, level_up skill index, commander_level_up skill id, exchange leave=0, tutorial ok=1).";
 			answer["inputSchema"]["type"].String() = "object";
 			answer["inputSchema"]["properties"]["choice"] = integerProperty("Option number from get_state.");
 			answer["inputSchema"]["required"].Vector().push_back(jsonString("choice"));

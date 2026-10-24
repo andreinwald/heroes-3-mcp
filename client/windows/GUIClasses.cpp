@@ -672,6 +672,42 @@ void CLevelWindow::answer(ui32 selection)
 		owner->cb->selectionMade(selection, questionID);
 }
 
+const std::vector<SecondarySkill> & CLevelWindow::levelUpSkills() const
+{
+	return skills;
+}
+
+const CGHeroInstance * CLevelWindow::levelUpHero() const
+{
+	return hero;
+}
+
+bool CLevelWindow::applyMcpLevelUpChoice(int skillIndex)
+{
+	if(selectionSubmitted)
+		return true;
+
+	if(skills.empty())
+	{
+		answer(0);
+		selectionSubmitted = true;
+		owner->showingDialog->setFree();
+		if(!questionID.hasValue() || !moreLevelsFollow)
+			close();
+		return true;
+	}
+
+	if(skillIndex < 0 || skillIndex >= static_cast<int>(skills.size()))
+		return false;
+
+	answer(static_cast<ui32>(skillIndex));
+	selectionSubmitted = true;
+	owner->showingDialog->setFree();
+	if(!questionID.hasValue() || !moreLevelsFollow)
+		close();
+	return true;
+}
+
 void CLevelWindow::close()
 {
 	if(!selectionSubmitted && !skills.empty())

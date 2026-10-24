@@ -207,7 +207,7 @@ class CStackWindow : public CWindowObject
 	void answer(ui32 selection);
 	void showStackExperienceDetailsWindow();
 
-	std::string getCommanderSkillDescription(int skillIndex, int skillLevel);
+	std::string getCommanderSkillDescription(int skillIndex, int skillLevel) const;
 
 public:
 	// for battles
@@ -224,6 +224,9 @@ public:
 	CStackWindow(const CCommanderInstance * commander, bool popup);
 	CStackWindow(CPlayerInterface * askedInterface, const CCommanderInstance * commander, const std::vector<ui32> & skills, bool moreLevels, QuestionID question);
 	bool isCommanderLevelUpDialog() const;
+	std::vector<ui32> commanderLevelUpSkillChoices() const;
+	std::string commanderLevelUpSkillLabel(ui32 skillId) const;
+	bool applyMcpCommanderLevelUpChoice(ui32 skillId);
 	void close() override;
 
 	void keyPressed(EShortcut key) override;
