@@ -60,11 +60,12 @@ export const tools = [
 	{
 		name: "answer",
 		description:
-			"Pick an option on the top blocking dialog from get_state: treasure choose 1/2, yes_no 1/0, info ok=1, battle_result ok=0 repeat=1, level_up skill index, commander_level_up skill id, exchange leave=0, tutorial ok=1.",
+			"Pick an option on the top blocking dialog from get_state: treasure choose 1/2, yes_no 1/0, info ok=1, battle_result ok=0 repeat=1, level_up skill index, commander_level_up skill id, exchange leave=0, tutorial ok=1, recruitment leave=0. Optional question id clears a stuck server activity.",
 		inputSchema: {
 			type: "object",
 			properties: {
 				choice: { type: "integer", description: "Option number from get_state." },
+				question: { type: "integer", description: "Server question id from dialog line or error log; use with choice when the UI is stuck." },
 			},
 			required: ["choice"],
 		},

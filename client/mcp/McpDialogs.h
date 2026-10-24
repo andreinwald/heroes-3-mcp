@@ -9,6 +9,7 @@
  */
 #pragma once
 
+#include <optional>
 #include <string>
 
 class CPlayerInterface;
@@ -17,4 +18,8 @@ class CPlayerInterface;
 void appendMcpDialogs(std::string & out, CPlayerInterface & interface);
 
 /// Apply choice from get_state on the top blocking dialog.
-std::string applyMcpDialogAnswer(int choice);
+/// questionOverride sends QuestionAnswer to the server when the UI has no matching window.
+std::string applyMcpDialogAnswer(int choice, std::optional<int> questionOverride = std::nullopt);
+
+/// Adventure actions must wait while this is true (recruitment, info dialogs, etc.).
+bool mcpHasBlockingDialog();

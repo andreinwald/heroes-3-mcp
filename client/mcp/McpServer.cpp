@@ -354,6 +354,7 @@ struct McpServer::Impl
 			answer["description"].String() = "Pick an option on the top blocking dialog from get_state (info/choose/yes_no, battle_result ok=0 repeat=1, level_up skill index, commander_level_up skill id, exchange leave=0, tutorial ok=1).";
 			answer["inputSchema"]["type"].String() = "object";
 			answer["inputSchema"]["properties"]["choice"] = integerProperty("Option number from get_state.");
+			answer["inputSchema"]["properties"]["question"] = integerProperty("Optional server question id from get_state or error text; use with choice to clear a stuck OpenWindow activity.");
 			answer["inputSchema"]["required"].Vector().push_back(jsonString("choice"));
 
 			JsonNode wait;
@@ -445,12 +446,13 @@ struct McpServer::Impl
 			{
 				std::string error;
 				const std::optional<int> choice = readInt(arguments["choice"], error, "choice", true);
+				const std::optional<int> question = readInt(arguments["question"], error, "question", false);
 				if(!error.empty() || !choice)
 				{
 					response.body = jsonToolResult(request, error.empty() ? "error: choice is required" : error, true);
 					return response;
 				}
-				text = callOnGui([choice] { return mcpAnswer(*choice); });
+				text = callOnGui([choice, question] { return mcpAnswer(*choice, question); });
 			}
 			else if(name == "end_turn")
 			{

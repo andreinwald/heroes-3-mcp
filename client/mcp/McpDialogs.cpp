@@ -212,6 +212,13 @@ void appendExchange(std::string & out, const CExchangeWindow & window)
 	out += "  option " + field("choice", "0") + " name=leave\n";
 }
 
+void appendRecruitment(std::string & out, const CRecruitmentWindow & window)
+{
+	out += "dialog blocking=yes type=recruitment\n";
+	out += "  text: \"Recruit creatures or leave to continue.\"\n";
+	out += "  option " + field("choice", "0") + " name=leave\n";
+}
+
 void appendUnknownBusy(std::string & out)
 {
 	out += "dialog blocking=yes type=unknown\n";
@@ -247,6 +254,12 @@ bool appendTopDialog(std::string & out, CPlayerInterface & interface)
 	if(const auto window = ENGINE->windows().topWindow<CTutorialWindow>())
 	{
 		appendTutorial(out);
+		return true;
+	}
+
+	if(const auto window = ENGINE->windows().topWindow<CRecruitmentWindow>())
+	{
+		appendRecruitment(out, *window);
 		return true;
 	}
 
@@ -305,7 +318,34 @@ void appendMcpDialogs(std::string & out, CPlayerInterface & interface)
 	appendTopDialog(out, interface);
 }
 
-std::string applyMcpDialogAnswer(int choice)
+bool mcpHasBlockingDialog()
+{
+	if(!ENGINE || !GAME || !GAME->interface())
+		return false;
+
+	CPlayerInterface & interface = *GAME->interface();
+	if(interface.showingDialog && interface.showingDialog->isBusy())
+		return true;
+
+	const auto & windows = ENGINE->windows();
+	if(windows.topWindow<BattleResultWindow>())
+		return true;
+	if(windows.topWindow<CLevelWindow>())
+		return true;
+	if(const auto stack = windows.topWindow<CStackWindow>(); stack && stack->isCommanderLevelUpDialog())
+		return true;
+	if(windows.topWindow<CTutorialWindow>())
+		return true;
+	if(windows.topWindow<CRecruitmentWindow>())
+		return true;
+	if(windows.topWindow<CInfoWindow>())
+		return true;
+	if(windows.topWindow<CExchangeWindow>())
+		return true;
+	return false;
+}
+
+std::string applyMcpDialogAnswer(int choice, std::optional<int> questionOverride)
 {
 	if(!GAME || !GAME->interface() || !GAME->interface()->cb || !ENGINE)
 		return "error: no game is in progress";
@@ -379,6 +419,16 @@ std::string applyMcpDialogAnswer(int choice)
 		return result;
 	}
 
+	if(const auto window = ENGINE->windows().topWindow<CRecruitmentWindow>())
+	{
+		if(choice != 0)
+			return "error: recruitment only supports choice=0 (leave); recruiting from MCP is not supported yet";
+		const std::string result = "answer choice=0 type=recruitment\n";
+		stateLock.unlock();
+		window->close();
+		return result;
+	}
+
 	if(auto window = ENGINE->windows().topWindow<CInfoWindow>())
 	{
 		std::string result = answerInfoWindow(*window, choice, cb);
@@ -407,6 +457,17 @@ std::string applyMcpDialogAnswer(int choice)
 
 	if(interface.showingDialog && interface.showingDialog->isBusy())
 		return "error: a dialog is open but the agent cannot act on it yet (type=unknown)";
+
+	if(questionOverride)
+	{
+		if(*questionOverride < 0)
+			return "error: question must be a non-negative server question id";
+		const std::string result = "answer " + field("choice", std::to_string(choice))
+			+ " " + field("question", std::to_string(*questionOverride)) + " type=question\n";
+		stateLock.unlock();
+		cb.selectionMade(choice, QuestionID(*questionOverride));
+		return result;
+	}
 
 	return "error: no dialog is open";
 }

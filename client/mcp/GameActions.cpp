@@ -188,7 +188,7 @@ std::string mcpMoveHero(int x, int y, std::optional<int> z, std::optional<int> h
 		return "error: a battle is in progress";
 	if(!interface.makingTurn)
 		return "error: it is not your turn";
-	if(interface.showingDialog && interface.showingDialog->isBusy())
+	if(mcpHasBlockingDialog())
 		return "error: a dialog is open";
 	if(interface.isHeroMoving())
 		return "error: a hero is already moving";
@@ -464,9 +464,9 @@ std::string mcpBattleDefend()
 	return result;
 }
 
-std::string mcpAnswer(int choice)
+std::string mcpAnswer(int choice, std::optional<int> questionOverride)
 {
-	return applyMcpDialogAnswer(choice);
+	return applyMcpDialogAnswer(choice, questionOverride);
 }
 
 std::string mcpEndTurn()
@@ -483,7 +483,7 @@ std::string mcpEndTurn()
 		return "error: it is not your turn";
 	if(!cb.getActiveBattles().empty())
 		return "error: a battle is in progress";
-	if(interface.showingDialog && interface.showingDialog->isBusy())
+	if(mcpHasBlockingDialog())
 		return "error: a dialog is open";
 	if(interface.isHeroMoving())
 		return "error: a hero is moving";
