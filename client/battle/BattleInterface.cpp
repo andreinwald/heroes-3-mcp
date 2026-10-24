@@ -35,6 +35,7 @@
 #include "media/IMusicPlayer.h"
 #include "media/ISoundPlayer.h"
 #include "render/Canvas.h"
+#include "../mcp/McpBattleWaiter.h"
 #include "../windows/CTutorialWindow.h"
 
 #include "../../lib/BattleFieldHandler.h"
@@ -197,6 +198,7 @@ void BattleInterface::openingEnd()
 
 BattleInterface::~BattleInterface()
 {
+	McpBattleWaiter::instance().notifyReady();
 	CPlayerInterface::battleInt = nullptr;
 
 	if (adventureInt)
@@ -349,6 +351,7 @@ void BattleInterface::battleFinished(const BattleResult& br, QuestionID question
 		if(ownsQuestion)
 			curInt->cb->selectionMade(0, questionID);
 		windowObject->close();
+		McpBattleWaiter::instance().notifyReady();
 		CPlayerInterface::battleInt.reset(); // must stay last, it destroys this object
 		return;
 	}
@@ -357,6 +360,7 @@ void BattleInterface::battleFinished(const BattleResult& br, QuestionID question
 	if(GAME->server().isReplayActive())
 	{
 		windowObject->close();
+		McpBattleWaiter::instance().notifyReady();
 		CPlayerInterface::battleInt.reset();
 		return;
 	}
@@ -370,6 +374,7 @@ void BattleInterface::battleFinished(const BattleResult& br, QuestionID question
 		};
 	}
 	ENGINE->windows().pushWindow(wnd);
+	McpBattleWaiter::instance().notifyReady();
 
 	curInt->waitWhileDialog(); // Avoid freeze when AI end turn after battle. Check bug #1897
 	CPlayerInterface::battleInt.reset();
@@ -654,6 +659,7 @@ void BattleInterface::activateStack()
 	fieldController->redrawBackgroundWithHexes();
 	actionsController->activateStack();
 	ENGINE->fakeMouseMove();
+	McpBattleWaiter::instance().notifyReady();
 }
 
 bool BattleInterface::makingTurn() const

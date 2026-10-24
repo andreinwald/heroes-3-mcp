@@ -30,7 +30,7 @@ export const tools = [
 	{
 		name: "attack",
 		description:
-			"In a battle, attack an enemy stack with the active unit. Shoots when the unit can shoot. Otherwise walks up and strikes in melee.",
+			"In a battle, attack an enemy stack with the active unit. Shoots when the unit can shoot. Otherwise walks up and strikes in melee. Returns after the next player decision, with a get_state snapshot.",
 		inputSchema: {
 			type: "object",
 			properties: {
@@ -42,13 +42,13 @@ export const tools = [
 	{
 		name: "wait",
 		description:
-			"In a battle, wait with the active stack so another unit can act first this round.",
+			"In a battle, wait with the active stack so another unit can act first this round. Returns after the next player decision, with a get_state snapshot.",
 		inputSchema: { type: "object", properties: {} },
 	},
 	{
 		name: "defend",
 		description:
-			"In a battle, defend with the active stack, ending its turn for this round.",
+			"In a battle, defend with the active stack, ending its turn for this round. Returns after the next player decision, with a get_state snapshot.",
 		inputSchema: { type: "object", properties: {} },
 	},
 	{
@@ -98,7 +98,7 @@ function postToGame(message) {
 			},
 		);
 
-		request.setTimeout(15000, () => {
+		request.setTimeout(120000, () => {
 			request.destroy(new Error("Timed out waiting for the game. Leave the game window open."));
 		});
 		request.on("error", (error) => {

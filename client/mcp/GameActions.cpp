@@ -17,6 +17,7 @@
 #include "adventureMap/AdventureMapInterface.h"
 #include "battle/BattleInterface.h"
 #include "battle/BattleStacksController.h"
+#include "McpBattleWaiter.h"
 #include "gui/WindowHandler.h"
 #include "widgets/CComponent.h"
 #include "windows/CExchangeWindow.h"
@@ -358,7 +359,10 @@ std::string mcpAttack(int stackId)
 	stateLock.unlock();
 
 	if(useWindow)
+	{
+		McpBattleWaiter::instance().arm();
 		battleUi->sendCommand(*action, actorStack);
+	}
 	else
 		cb.battleMakeUnitAction(battleID, *action);
 
@@ -404,7 +408,10 @@ std::string mcpBattleWait()
 	stateLock.unlock();
 
 	if(useWindow)
+	{
+		McpBattleWaiter::instance().arm();
 		battleUi->sendCommand(action, actorStack);
+	}
 	else
 		cb.battleMakeUnitAction(battleID, action);
 
@@ -448,7 +455,10 @@ std::string mcpBattleDefend()
 	stateLock.unlock();
 
 	if(useWindow)
+	{
+		McpBattleWaiter::instance().arm();
 		battleUi->sendCommand(action, actorStack);
+	}
 	else
 		cb.battleMakeUnitAction(battleID, action);
 

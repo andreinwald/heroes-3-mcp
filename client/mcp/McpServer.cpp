@@ -13,6 +13,7 @@
 #include "GameEngine.h"
 #include "GameActions.h"
 #include "GameStateSnapshot.h"
+#include "McpBattleWaiter.h"
 
 #include "../lib/CThreadHelper.h"
 #include "../lib/json/JsonNode.h"
@@ -258,6 +259,18 @@ struct McpServer::Impl
 		return future.get();
 	}
 
+	std::string completeBattleTool(std::string text)
+	{
+		if(text.rfind("error:", 0) == 0 || text.rfind("Timed out", 0) == 0 || text.rfind("MCP server", 0) == 0)
+			return text;
+
+		if(!McpBattleWaiter::instance().waitUntilReady(std::chrono::seconds(90)))
+			text += "warning: timed out waiting for the next battle decision\n";
+
+		text += callOnGui([] { return buildMcpGameState(); });
+		return text;
+	}
+
 	HttpResponse handleJson(const std::string & body)
 	{
 		JsonNode request;
@@ -331,7 +344,7 @@ struct McpServer::Impl
 
 			JsonNode attack;
 			attack["name"].String() = "attack";
-			attack["description"].String() = "In a battle, attack an enemy stack with the active unit. Shoots when the unit can shoot. Otherwise walks up and strikes in melee.";
+			attack["description"].String() = "In a battle, attack an enemy stack with the active unit. Shoots when the unit can shoot. Otherwise walks up and strikes in melee. Returns after the next player decision, with a get_state snapshot.";
 			attack["inputSchema"]["type"].String() = "object";
 			attack["inputSchema"]["properties"]["stack"] = integerProperty("Enemy stack id from get_state.");
 			attack["inputSchema"]["required"].Vector().push_back(jsonString("stack"));
@@ -345,13 +358,13 @@ struct McpServer::Impl
 
 			JsonNode wait;
 			wait["name"].String() = "wait";
-			wait["description"].String() = "In a battle, wait with the active stack so another unit can act first this round.";
+			wait["description"].String() = "In a battle, wait with the active stack so another unit can act first this round. Returns after the next player decision, with a get_state snapshot.";
 			wait["inputSchema"]["type"].String() = "object";
 			wait["inputSchema"]["properties"].Struct();
 
 			JsonNode defend;
 			defend["name"].String() = "defend";
-			defend["description"].String() = "In a battle, defend with the active stack, ending its turn for this round.";
+			defend["description"].String() = "In a battle, defend with the active stack, ending its turn for this round. Returns after the next player decision, with a get_state snapshot.";
 			defend["inputSchema"]["type"].String() = "object";
 			defend["inputSchema"]["properties"].Struct();
 
@@ -411,15 +424,15 @@ struct McpServer::Impl
 					response.body = jsonToolResult(request, error.empty() ? "error: stack is required" : error, true);
 					return response;
 				}
-				text = callOnGui([stack] { return mcpAttack(*stack); });
+				text = completeBattleTool(callOnGui([stack] { return mcpAttack(*stack); }));
 			}
 			else if(name == "wait")
 			{
-				text = callOnGui([] { return mcpBattleWait(); });
+				text = completeBattleTool(callOnGui([] { return mcpBattleWait(); }));
 			}
 			else if(name == "defend")
 			{
-				text = callOnGui([] { return mcpBattleDefend(); });
+				text = completeBattleTool(callOnGui([] { return mcpBattleDefend(); }));
 			}
 			else if(name == "answer")
 			{
@@ -587,6 +600,7 @@ void McpServer::stop()
 		std::lock_guard lock(impl->queueMutex);
 		impl->stopping = true;
 	}
+	McpBattleWaiter::instance().cancel();
 
 	if(impl->acceptor)
 	{
