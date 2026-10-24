@@ -319,9 +319,15 @@ void appendBattle(std::string & out, CCallback & cb, const ITranslator & transla
 			out += " " + field("tactics", std::to_string(tactics));
 
 		if(const battle::Unit * active = battle->battleActiveUnit())
+		{
 			out += " " + field("active", std::to_string(active->unitId()));
+			out += " " + field("active_turn", active->unitSide() == battle->battleGetMySide() ? "yours" : "enemy");
+		}
 		else
+		{
 			out += " " + field("active", "none");
+			out += " " + field("active_turn", "none");
+		}
 
 		if(const CGTownInstance * town = battle->battleGetDefendedTown())
 			out += " " + field("siege", translator.translate(town->getNameTextID()));

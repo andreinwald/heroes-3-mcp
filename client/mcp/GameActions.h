@@ -20,6 +20,14 @@ std::string mcpMoveHero(int x, int y, std::optional<int> z, std::optional<int> h
 /// Call only on the GUI thread, while holding the interface mutex.
 std::string mcpAttack(int stackId);
 
+/// Wait with the active stack so another friendly unit can act first this round.
+/// Call only on the GUI thread, while holding the interface mutex.
+std::string mcpBattleWait();
+
+/// Defend with the active stack, ending its turn for this round.
+/// Call only on the GUI thread, while holding the interface mutex.
+std::string mcpBattleDefend();
+
 /// Answer the open blocking dialog. choice is the option number from get_state.
 /// Call only on the GUI thread, while holding the interface mutex.
 std::string mcpAnswer(int choice);

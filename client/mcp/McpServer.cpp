@@ -343,10 +343,24 @@ struct McpServer::Impl
 			answer["inputSchema"]["properties"]["choice"] = integerProperty("Option number from get_state.");
 			answer["inputSchema"]["required"].Vector().push_back(jsonString("choice"));
 
+			JsonNode wait;
+			wait["name"].String() = "wait";
+			wait["description"].String() = "In a battle, wait with the active stack so another unit can act first this round.";
+			wait["inputSchema"]["type"].String() = "object";
+			wait["inputSchema"]["properties"].Struct();
+
+			JsonNode defend;
+			defend["name"].String() = "defend";
+			defend["description"].String() = "In a battle, defend with the active stack, ending its turn for this round.";
+			defend["inputSchema"]["type"].String() = "object";
+			defend["inputSchema"]["properties"].Struct();
+
 			JsonNode result;
 			result["tools"].Vector().push_back(std::move(state));
 			result["tools"].Vector().push_back(std::move(move));
 			result["tools"].Vector().push_back(std::move(attack));
+			result["tools"].Vector().push_back(std::move(wait));
+			result["tools"].Vector().push_back(std::move(defend));
 			result["tools"].Vector().push_back(std::move(answer));
 			response.body = jsonResult(request, std::move(result));
 			return response;
@@ -398,6 +412,14 @@ struct McpServer::Impl
 					return response;
 				}
 				text = callOnGui([stack] { return mcpAttack(*stack); });
+			}
+			else if(name == "wait")
+			{
+				text = callOnGui([] { return mcpBattleWait(); });
+			}
+			else if(name == "defend")
+			{
+				text = callOnGui([] { return mcpBattleDefend(); });
 			}
 			else if(name == "answer")
 			{

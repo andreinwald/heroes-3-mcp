@@ -40,6 +40,18 @@ export const tools = [
 		},
 	},
 	{
+		name: "wait",
+		description:
+			"In a battle, wait with the active stack so another unit can act first this round.",
+		inputSchema: { type: "object", properties: {} },
+	},
+	{
+		name: "defend",
+		description:
+			"In a battle, defend with the active stack, ending its turn for this round.",
+		inputSchema: { type: "object", properties: {} },
+	},
+	{
 		name: "answer",
 		description:
 			"Pick an option on the open blocking dialog. choice is the number from get_state: 1 or 2 for gold vs experience, 1=yes 0=no, 0=cancel when listed.",
