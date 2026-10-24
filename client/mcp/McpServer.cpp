@@ -327,7 +327,7 @@ struct McpServer::Impl
 		{
 			JsonNode state;
 			state["name"].String() = "get_state";
-			state["description"].String() = "Text snapshot of the visible game: date, resources, your heroes and towns, visible map objects, blocking dialogs with numbered choices, and the current battle (active_turn=yours|enemy|busy|none; call attack/wait/defend only when active_turn=yours).";
+			state["description"].String() = "Text snapshot of the visible game: date, resources, heroes, visible towns (pos, owner, relation=enemy|ally|neutral), map objects, blocking dialogs with numbered choices, and the current battle (active_turn=yours|enemy|busy|none; call attack/wait/defend only when active_turn=yours).";
 			state["inputSchema"]["type"].String() = "object";
 			state["inputSchema"]["properties"].Struct();
 
@@ -368,12 +368,19 @@ struct McpServer::Impl
 			defend["inputSchema"]["type"].String() = "object";
 			defend["inputSchema"]["properties"].Struct();
 
+			JsonNode endTurn;
+			endTurn["name"].String() = "end_turn";
+			endTurn["description"].String() = "End your adventure turn and advance to the next day. Fails during battle, while a dialog is open, or while a hero is moving.";
+			endTurn["inputSchema"]["type"].String() = "object";
+			endTurn["inputSchema"]["properties"].Struct();
+
 			JsonNode result;
 			result["tools"].Vector().push_back(std::move(state));
 			result["tools"].Vector().push_back(std::move(move));
 			result["tools"].Vector().push_back(std::move(attack));
 			result["tools"].Vector().push_back(std::move(wait));
 			result["tools"].Vector().push_back(std::move(defend));
+			result["tools"].Vector().push_back(std::move(endTurn));
 			result["tools"].Vector().push_back(std::move(answer));
 			response.body = jsonResult(request, std::move(result));
 			return response;
@@ -444,6 +451,10 @@ struct McpServer::Impl
 					return response;
 				}
 				text = callOnGui([choice] { return mcpAnswer(*choice); });
+			}
+			else if(name == "end_turn")
+			{
+				text = callOnGui([] { return mcpEndTurn(); });
 			}
 			else
 			{

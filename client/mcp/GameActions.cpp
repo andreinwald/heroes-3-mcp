@@ -16,6 +16,8 @@
 #include "GameInstance.h"
 #include "PlayerLocalState.h"
 #include "adventureMap/AdventureMapInterface.h"
+
+#include "../lib/ConditionalWait.h"
 #include "battle/BattleInterface.h"
 #include "battle/BattleStacksController.h"
 #include "McpBattleWaiter.h"
@@ -465,4 +467,36 @@ std::string mcpBattleDefend()
 std::string mcpAnswer(int choice)
 {
 	return applyMcpDialogAnswer(choice);
+}
+
+std::string mcpEndTurn()
+{
+	if(!GAME || !GAME->interface() || !GAME->interface()->cb)
+		return "error: no game is in progress";
+
+	CPlayerInterface & interface = *GAME->interface();
+	CCallback & cb = *interface.cb;
+
+	std::shared_lock stateLock(CGameState::mutex);
+
+	if(!interface.makingTurn)
+		return "error: it is not your turn";
+	if(!cb.getActiveBattles().empty())
+		return "error: a battle is in progress";
+	if(interface.showingDialog && interface.showingDialog->isBusy())
+		return "error: a dialog is open";
+	if(interface.isHeroMoving())
+		return "error: a hero is moving";
+
+	stateLock.unlock();
+
+	if(adventureInt)
+		adventureInt->hotkeyEndingTurn();
+	else
+	{
+		interface.makingTurn = false;
+		cb.endTurn();
+	}
+
+	return "end_turn\n";
 }

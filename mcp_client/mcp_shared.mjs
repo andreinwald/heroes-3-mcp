@@ -9,7 +9,7 @@ export const tools = [
 	{
 		name: "get_state",
 		description:
-			"Text snapshot of the visible game: date, resources, your heroes and towns, visible map objects, the top blocking dialog with numbered choices (use answer), and the current battle (active_turn=yours|enemy|busy|none; call attack/wait/defend only when active_turn=yours).",
+			"Text snapshot of the visible game: date, resources, heroes, visible towns (pos, owner, relation=enemy|ally|neutral), map objects, the top blocking dialog with numbered choices (use answer), and the current battle (active_turn=yours|enemy|busy|none; call attack/wait/defend only when active_turn=yours).",
 		inputSchema: { type: "object", properties: {} },
 	},
 	{
@@ -49,6 +49,12 @@ export const tools = [
 		name: "defend",
 		description:
 			"In a battle, defend with the active stack, ending its turn for this round. Returns after the next player decision, with a get_state snapshot.",
+		inputSchema: { type: "object", properties: {} },
+	},
+	{
+		name: "end_turn",
+		description:
+			"End your adventure turn and advance to the next day. Fails during battle, while a dialog is open, or while a hero is moving.",
 		inputSchema: { type: "object", properties: {} },
 	},
 	{

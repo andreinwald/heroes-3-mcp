@@ -101,6 +101,19 @@ const char * skillLevelName(ui8 level)
 	}
 }
 
+const char * relationName(PlayerRelations relation)
+{
+	switch(relation)
+	{
+		case PlayerRelations::ENEMIES:
+			return "enemy";
+		case PlayerRelations::ALLIES:
+			return "ally";
+		default:
+			return "neutral";
+	}
+}
+
 const char * fortName(CGTownInstance::EFortLevel level)
 {
 	switch(level)
@@ -228,6 +241,8 @@ void appendTown(std::string & out, const CCallback & cb, const CGTownInstance & 
 		out += " " + field("faction", faction->getNameTranslated());
 	out += " " + field("pos", posText(town.visitablePos()));
 	out += " " + field("owner", ownerText(town.tempOwner));
+	if(const auto player = cb.getPlayerID())
+		out += " " + field("relation", relationName(cb.getPlayerRelations(*player, town.tempOwner)));
 	out += " " + field("fort", fortName(town.fortLevel()));
 	out += "\n";
 
@@ -469,7 +484,26 @@ std::string buildMcpGameState()
 		}
 	}
 
-	auto towns = cb.getTownsInfo(false);
+	std::vector<const CGTownInstance *> towns;
+	std::set<int> townIds;
+	const auto addTown = [&](const CGTownInstance * town)
+	{
+		if(!town)
+			return;
+		if(!townIds.insert(town->id.getNum()).second)
+			return;
+		towns.push_back(town);
+	};
+
+	for(const CGTownInstance * town : cb.getTownsInfo(false))
+		addTown(town);
+
+	for(const CGObjectInstance * obj : cb.getAllVisitableObjs())
+	{
+		if(obj->ID == Obj::TOWN || obj->ID == Obj::RANDOM_TOWN)
+			addTown(dynamic_cast<const CGTownInstance *>(obj));
+	}
+
 	std::sort(towns.begin(), towns.end(), [](const CGTownInstance * left, const CGTownInstance * right)
 	{
 		if(!left || !right)

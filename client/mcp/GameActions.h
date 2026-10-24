@@ -31,3 +31,7 @@ std::string mcpBattleDefend();
 /// Answer the open blocking dialog. choice is the option number from get_state.
 /// Call only on the GUI thread, while holding the interface mutex.
 std::string mcpAnswer(int choice);
+
+/// End the current adventure turn and advance to the next day.
+/// Call only on the GUI thread, while holding the interface mutex.
+std::string mcpEndTurn();
