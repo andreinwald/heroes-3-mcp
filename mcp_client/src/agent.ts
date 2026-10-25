@@ -30,7 +30,7 @@ type ChatMessage =
 
 const KEEP_HISTORY = 100;
 const IDLE_LIMIT = 3;
-const MISTRAL_MODEL = "mistral-small-2603";
+const MISTRAL_MODEL = "mistral-large-4";
 const REASONING_EFFORT = ReasoningEffort.None;
 const MCP_URL = "http://127.0.0.1:47321/mcp";
 const MAX_STEPS = 50;
