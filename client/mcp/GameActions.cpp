@@ -174,6 +174,48 @@ const CGHeroInstance * findHero(CPlayerInterface & interface, std::optional<int>
 
 }
 
+bool mcpCanAttackTarget(CCallback & cb, const CPlayerBattleCallback & battle, const battle::Unit & actor, const battle::Unit & target)
+{
+	if(!target.alive() || !battle.battleMatchOwner(&actor, &target))
+		return false;
+
+	std::vector<ActionOption> options;
+	BattleActionType::collectAllOptions(battle, actor, options);
+	std::sort(options.begin(), options.end(), [&](const ActionOption & left, const ActionOption & right)
+	{
+		return left.type->getPriority(battle, left, actor, &target) < right.type->getPriority(battle, right, actor, &target);
+	});
+
+	const BattleHex hovered = target.getPosition();
+	for(const ActionOption & option : options)
+	{
+		std::vector<ActionApproach> approaches = option.type->getApproaches(battle, option, actor, hovered);
+		std::sort(approaches.begin(), approaches.end(), [&](const ActionApproach & left, const ActionApproach & right)
+		{
+			return BattleHex::getDistance(actor.getPosition(), left.from) < BattleHex::getDistance(actor.getPosition(), right.from);
+		});
+
+		const std::size_t attempts = approaches.empty() ? 1 : approaches.size();
+		for(std::size_t i = 0; i < attempts; ++i)
+		{
+			ActionContext context;
+			context.actor = &actor;
+			context.hoveredHex = hovered;
+			context.side = battle.battleGetMySide();
+			if(!approaches.empty())
+				context.approach = approaches[i];
+
+			if(!option.type->isLegal(cb, battle, option, context))
+				continue;
+
+			std::optional<BattleAction> built = option.type->build(battle, option, context);
+			if(built && attackActionName(built->actionType))
+				return true;
+		}
+	}
+	return false;
+}
+
 std::string mcpMoveHero(int x, int y, std::optional<int> z, std::optional<int> heroId)
 {
 	if(!GAME || !GAME->interface() || !GAME->interface()->cb)

@@ -28,7 +28,7 @@ type ChatMessage =
 	| { role: "assistant"; content?: string | null; toolCalls?: ToolCall[] }
 	| { role: "tool"; toolCallId: string; name: string; content: string };
 
-const KEEP_HISTORY = 10;
+const KEEP_HISTORY = 100;
 const IDLE_LIMIT = 3;
 const MISTRAL_MODEL = "mistral-small-2603";
 const REASONING_EFFORT = ReasoningEffort.None;
@@ -141,6 +141,23 @@ function formatDurationMs(ms: number): string {
 	if (ms < 1000)
 		return `${Math.round(ms)}ms`;
 	return `${(ms / 1000).toFixed(2)}s`;
+}
+
+function toolErrorDetail(text: string): string {
+	const line = text.split("\n").map((part) => part.trim()).find(Boolean) ?? text;
+	const flat = line.replace(/\s+/g, " ").trim();
+	if (flat.toLowerCase().startsWith("error:"))
+		return flat.slice(6).trim();
+	return flat;
+}
+
+function printActionResult(name: string, durationMs: number, text: string, isError: boolean): void {
+	const timing = formatDurationMs(durationMs);
+	if (!isError) {
+		printTool(`[action] ${name} ${timing}`);
+		return;
+	}
+	printError(`[action] ${name} ${timing} — ${toolErrorDetail(text)}`);
 }
 
 function modelTextForConsole(content: string): string {
@@ -341,8 +358,7 @@ async function main(): Promise<void> {
 			const durationMs = performance.now() - started;
 
 			await log.write({ type: "tool_result", step, id, name, isError, durationMs, text });
-			const resultLine = `[action] ${name} ${formatDurationMs(durationMs)}${isError ? " error" : ""}`;
-			printTool(resultLine);
+			printActionResult(name, durationMs, text, isError);
 			messages.push({ role: "tool", toolCallId: id, name, content: text });
 		}
 	}

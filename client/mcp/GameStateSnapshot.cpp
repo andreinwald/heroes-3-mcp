@@ -9,6 +9,7 @@
  */
 #include "StdInc.h"
 #include "GameStateSnapshot.h"
+#include "GameActions.h"
 #include "McpDialogs.h"
 
 #include "CPlayerInterface.h"
@@ -26,12 +27,18 @@
 
 #include "../lib/CSkillHandler.h"
 #include "../lib/ConditionalWait.h"
+#include "../lib/CCreatureHandler.h"
 #include "../lib/GameLibrary.h"
 #include "../lib/Rect.h"
 #include "../lib/RiverHandler.h"
 #include "../lib/RoadHandler.h"
 #include "../lib/TerrainHandler.h"
 #include "../lib/mapping/TerrainTile.h"
+#include "../lib/entities/artifact/CArtifact.h"
+#include "../lib/entities/artifact/CArtifactInstance.h"
+#include "../lib/entities/artifact/CArtifactSet.h"
+#include "../lib/entities/building/CBuilding.h"
+#include "../lib/entities/faction/CTown.h"
 #include "../lib/entities/hero/CHeroClass.h"
 #include "../lib/gameState/InfoAboutArmy.h"
 #include "../lib/battle/BattleSide.h"
@@ -47,6 +54,8 @@
 #include "../lib/mapObjects/army/CCreatureSet.h"
 #include "../lib/CStack.h"
 #include "../lib/gameState/CGameState.h"
+#include "../lib/pathfinder/CGPathNode.h"
+#include "../lib/spells/CSpellHandler.h"
 #include "../lib/texts/MetaString.h"
 
 namespace
@@ -200,7 +209,25 @@ std::string objectLabel(const CGObjectInstance & obj, const PlayerColor & player
 	return obj.getObjectName().toString(&translator);
 }
 
-void appendHero(std::string & out, const CGHeroInstance & hero, const ITranslator & translator)
+void appendHeroIndex(std::string & out, const CGHeroInstance & hero, const ITranslator & translator)
+{
+	const std::string name = translator.translate(hero.getNameTextID());
+	const CHeroClass * heroClass = hero.getHeroClass();
+
+	out += "hero";
+	out += " " + field("id", std::to_string(hero.id.getNum()));
+	out += " " + field("name", name.empty() ? std::string("Hero") : name);
+	if(heroClass)
+		out += " " + field("class", heroClass->getNameTranslated());
+	out += " " + field("pos", posText(hero.visitablePos()));
+	out += " " + field("level", std::to_string(hero.level));
+	out += " " + field("move", std::to_string(hero.movementPointsRemaining()) + "/" + std::to_string(hero.movementPointsLimit()));
+	out += " " + field("garrison", hero.isGarrisoned() ? "yes" : "no");
+	out += " " + field("boat", hero.inBoat() ? "yes" : "no");
+	out += "\n";
+}
+
+void appendHeroDetail(std::string & out, const CGHeroInstance & hero, const ITranslator & translator)
 {
 	const std::string name = translator.translate(hero.getNameTextID());
 	const CHeroClass * heroClass = hero.getHeroClass();
@@ -239,9 +266,36 @@ void appendHero(std::string & out, const CGHeroInstance & hero, const ITranslato
 		out += " " + field("name", skillType->getNameTranslated());
 		out += "\n";
 	}
+
+	for(const auto & [slot, info] : hero.artifactsWorn)
+	{
+		if(slot == ArtifactPosition::SPELLBOOK || !info.getArt() || info.locked)
+			continue;
+		const CArtifact * type = info.getArt()->getType();
+		if(!type)
+			continue;
+		out += "  artifact: " + field("slot", "worn") + " " + field("name", type->getNameTranslated()) + "\n";
+	}
+	for(const ArtSlotInfo & info : hero.artifactsInBackpack)
+	{
+		if(!info.getArt() || info.locked)
+			continue;
+		const CArtifact * type = info.getArt()->getType();
+		if(!type)
+			continue;
+		out += "  artifact: " + field("slot", "backpack") + " " + field("name", type->getNameTranslated()) + "\n";
+	}
+
+	for(const SpellID spellId : hero.getSpellsInSpellbook())
+	{
+		const auto * spell = LIBRARY->spellh->getById(spellId);
+		if(!spell)
+			continue;
+		out += "  spell: " + field("name", spell->getNameTranslated()) + "\n";
+	}
 }
 
-void appendTown(std::string & out, const CCallback & cb, const CGTownInstance & town, const ITranslator & translator)
+void appendTownIndex(std::string & out, const CCallback & cb, const CGTownInstance & town, const ITranslator & translator)
 {
 	const CFaction * faction = town.getFaction();
 
@@ -256,6 +310,11 @@ void appendTown(std::string & out, const CCallback & cb, const CGTownInstance & 
 		out += " " + field("relation", relationName(cb.getPlayerRelations(*player, town.tempOwner)));
 	out += " " + field("fort", fortName(town.fortLevel()));
 	out += "\n";
+}
+
+void appendTownDetail(std::string & out, const CCallback & cb, const CGTownInstance & town, const ITranslator & translator)
+{
+	appendTownIndex(out, cb, town, translator);
 
 	if(seesExactArmy(cb, &town))
 		appendExactArmy(out, town);
@@ -266,6 +325,30 @@ void appendTown(std::string & out, const CCallback & cb, const CGTownInstance & 
 		out += "  hero: " + field("role", "visiting") + " " + field("id", std::to_string(visiting->id.getNum())) + "\n";
 	if(const CGHeroInstance * garrisoned = town.getGarrisonHero())
 		out += "  hero: " + field("role", "garrison") + " " + field("id", std::to_string(garrisoned->id.getNum())) + "\n";
+
+	if(!seesExactArmy(cb, &town) || !town.getTown())
+		return;
+
+	for(const BuildingID buildingId : town.getBuildings())
+	{
+		const auto found = town.getTown()->buildings.find(buildingId);
+		if(found == town.getTown()->buildings.end() || !found->second)
+			continue;
+		out += "  building: " + field("name", found->second->getNameTranslated()) + "\n";
+	}
+
+	for(const auto & [amount, ids] : town.creatures)
+	{
+		if(ids.empty() || amount <= 0)
+			continue;
+		const auto * creature = LIBRARY->creh->getById(ids.back());
+		if(!creature)
+			continue;
+		out += "  recruit:";
+		out += " " + field("creature", creature->getNamePluralTranslated());
+		out += " " + field("count", std::to_string(amount));
+		out += "\n";
+	}
 }
 
 void appendObject(std::string & out, const CCallback & cb, const CGObjectInstance & obj, const ITranslator & translator)
@@ -410,6 +493,41 @@ void appendBattle(std::string & out, CCallback & cb, const ITranslator & transla
 				out += " wide=yes";
 			out += "\n";
 		}
+
+		if(activeStackId < 0)
+			continue;
+
+		const CStack * actor = nullptr;
+		for(const CStack * stack : stacks)
+		{
+			if(stack && stack->unitId() == static_cast<uint32_t>(activeStackId))
+			{
+				actor = stack;
+				break;
+			}
+		}
+		if(!actor || actor->unitSide() != battle->battleGetMySide())
+			continue;
+
+		std::shared_ptr<BattleInterface> battleUi = CPlayerInterface::battleInt;
+		if(battleUi && battleUi->getBattleID() == battleID && (battleUi->hasAnimations() || !battleUi->makingTurn()))
+			continue;
+
+		std::string attackIds;
+		for(const CStack * enemy : stacks)
+		{
+			if(!enemy || !mcpCanAttackTarget(cb, *battle, *actor, *enemy))
+				continue;
+			if(!attackIds.empty())
+				attackIds += ",";
+			attackIds += std::to_string(enemy->unitId());
+		}
+
+		out += "can";
+		out += " " + field("attack", attackIds.empty() ? std::string("none") : attackIds);
+		out += " " + field("wait", actor->waitedThisRound() ? "no" : "yes");
+		out += " defend=yes";
+		out += "\n";
 	}
 }
 
@@ -783,6 +901,101 @@ void appendViewportObjects(std::string & out, CCallback & cb, const MapViewport 
 	}
 }
 
+const char * reachKind(EPathNodeAction action)
+{
+	switch(action)
+	{
+		case EPathNodeAction::BATTLE:
+		case EPathNodeAction::TELEPORT_BATTLE:
+			return "battle";
+		case EPathNodeAction::VISIT:
+		case EPathNodeAction::BLOCKING_VISIT:
+		case EPathNodeAction::TELEPORT_BLOCKING_VISIT:
+			return "visit";
+		default:
+			return "walk";
+	}
+}
+
+void appendReachableTiles(std::string & out, CPlayerInterface & interface, const MapViewport & view)
+{
+	const CGHeroInstance * hero = interface.localState->getCurrentHero();
+	if(!hero && !interface.localState->getWanderingHeroes().empty())
+		hero = interface.localState->getWanderingHeroes().front();
+	if(!hero || hero->isGarrisoned())
+		return;
+
+	const auto paths = interface.getPathsInfo(hero);
+	if(!paths)
+		return;
+
+	const int3 heroPos = hero->visitablePos();
+	std::map<std::string, std::vector<int3>> groups;
+
+	for(int y = view.minY; y <= view.maxY; ++y)
+	{
+		for(int x = view.minX; x <= view.maxX; ++x)
+		{
+			const int3 pos(x, y, view.z);
+			if(pos == heroPos)
+				continue;
+			const CGPathNode * node = paths->getPathInfo(pos);
+			if(!node || node->turns != 0 || node->action == EPathNodeAction::UNKNOWN)
+				continue;
+
+			groups[reachKind(node->action)].push_back(pos);
+		}
+	}
+
+	if(groups.empty())
+	{
+		out += "reach " + field("hero", std::to_string(hero->id.getNum())) + " tiles=none\n";
+		return;
+	}
+
+	for(const char * kind : { "walk", "visit", "battle" })
+	{
+		const auto found = groups.find(kind);
+		if(found == groups.end() || found->second.empty())
+			continue;
+
+		std::string coords;
+		int runY = -1;
+		int runStartX = -1;
+		int runEndX = -1;
+		const auto flushRun = [&]()
+		{
+			if(runStartX < 0)
+				return;
+			if(!coords.empty())
+				coords += " ";
+			coords += xyRange(runStartX, runEndX, runY);
+			runStartX = -1;
+			runEndX = -1;
+			runY = -1;
+		};
+		for(const int3 & pos : found->second)
+		{
+			if(runStartX >= 0 && pos.y == runY && pos.x == runEndX + 1)
+			{
+				runEndX = pos.x;
+				continue;
+			}
+			flushRun();
+			runY = pos.y;
+			runStartX = pos.x;
+			runEndX = pos.x;
+		}
+		flushRun();
+
+		out += "reach";
+		out += " " + field("hero", std::to_string(hero->id.getNum()));
+		out += " " + field("kind", kind);
+		out += " " + field("tiles", coords);
+		out += "\n";
+	}
+}
+
 }
 
 bool mcpBattleIsBusy()
@@ -885,7 +1098,7 @@ std::string buildMcpGameState()
 		ownHeroIds.insert(hero->id.getNum());
 		try
 		{
-			appendHero(out, *hero, translator);
+			appendHeroIndex(out, *hero, translator);
 		}
 		catch(const std::exception & error)
 		{
@@ -928,7 +1141,7 @@ std::string buildMcpGameState()
 			continue;
 		try
 		{
-			appendTown(out, cb, *town, translator);
+			appendTownIndex(out, cb, *town, translator);
 		}
 		catch(const std::exception & error)
 		{
@@ -975,6 +1188,20 @@ std::string buildMcpGameState()
 	if(!wroteObject)
 		out += "objects: none\n";
 
+	return out;
+}
+
+std::string buildMcpBattleState()
+{
+	if(!GAME || !GAME->interface() || !GAME->interface()->cb)
+		return "No game is in progress.\n";
+
+	std::shared_lock stateLock(CGameState::mutex);
+
+	CCallback & cb = *GAME->interface()->cb;
+	const ITranslator & translator = GAME->translator();
+
+	std::string out;
 	try
 	{
 		appendBattle(out, cb, translator);
@@ -983,7 +1210,6 @@ std::string buildMcpGameState()
 	{
 		out += "battle " + field("error", error.what()) + "\n";
 	}
-
 	return out;
 }
 
@@ -1010,5 +1236,89 @@ std::string buildMcpMapState()
 	out += "\n";
 	appendViewportTerrain(out, cb, view);
 	appendViewportObjects(out, cb, view, translator);
+	appendReachableTiles(out, interface, view);
+	return out;
+}
+
+std::string buildMcpHeroState(std::optional<int> heroId)
+{
+	if(!GAME || !GAME->interface() || !GAME->interface()->cb)
+		return "error: no game is in progress\n";
+
+	std::shared_lock stateLock(CGameState::mutex);
+
+	CPlayerInterface & interface = *GAME->interface();
+	CCallback & cb = *interface.cb;
+	const ITranslator & translator = GAME->translator();
+	const auto heroes = cb.getHeroesInfo();
+
+	const CGHeroInstance * hero = nullptr;
+	if(heroId)
+	{
+		for(const CGHeroInstance * candidate : heroes)
+		{
+			if(candidate && candidate->id.getNum() == *heroId)
+			{
+				hero = candidate;
+				break;
+			}
+		}
+		if(!hero)
+			return "error: no hero with id " + std::to_string(*heroId) + "\n";
+	}
+	else
+	{
+		hero = interface.localState->getCurrentHero();
+		if(!hero)
+		{
+			for(const CGHeroInstance * candidate : heroes)
+			{
+				if(candidate)
+				{
+					hero = candidate;
+					break;
+				}
+			}
+		}
+		if(!hero)
+			return "error: you have no hero\n";
+	}
+
+	std::string out;
+	appendHeroDetail(out, *hero, translator);
+	return out;
+}
+
+std::string buildMcpTownState(int townId)
+{
+	if(!GAME || !GAME->interface() || !GAME->interface()->cb)
+		return "error: no game is in progress\n";
+
+	std::shared_lock stateLock(CGameState::mutex);
+
+	CCallback & cb = *GAME->interface()->cb;
+	const ITranslator & translator = GAME->translator();
+
+	const CGTownInstance * town = nullptr;
+	const auto add = [&](const CGTownInstance * candidate)
+	{
+		if(candidate && candidate->id.getNum() == townId)
+			town = candidate;
+	};
+	for(const CGTownInstance * candidate : cb.getTownsInfo(false))
+		add(candidate);
+	if(!town)
+	{
+		for(const CGObjectInstance * obj : cb.getAllVisitableObjs())
+		{
+			if(obj && (obj->ID == Obj::TOWN || obj->ID == Obj::RANDOM_TOWN))
+				add(dynamic_cast<const CGTownInstance *>(obj));
+		}
+	}
+	if(!town)
+		return "error: no town with id " + std::to_string(townId) + "\n";
+
+	std::string out;
+	appendTownDetail(out, cb, *town, translator);
 	return out;
 }

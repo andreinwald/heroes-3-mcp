@@ -287,7 +287,7 @@ struct McpServer::Impl
 		if(!McpBattleWaiter::instance().waitUntilReady(BATTLE_IDLE_TIMEOUT))
 			text += "warning: timed out waiting for the next battle decision\n";
 
-		text += callOnGui([] { return buildMcpGameState(); });
+		text += callOnGui([] { return buildMcpBattleState(); });
 		return text;
 	}
 
@@ -360,15 +360,34 @@ struct McpServer::Impl
 		{
 			JsonNode state;
 			state["name"].String() = "get_state";
-			state["description"].String() = "Text snapshot of the visible game: date, resources, heroes, visible towns (pos, owner, relation=enemy|ally|neutral), map objects, blocking dialogs with numbered choices, and the current battle (active_turn=yours|enemy; waits until battle animations finish before returning). Roads are in get_map, not here.";
+			state["description"].String() = "What is happening now: date, resources, activity (your_turn|battle|waiting), whether a hero is moving, blocking dialogs with numbered choices, a short hero list (id, name, pos, move), visible towns (id, pos, owner, relation), and other map objects. Army, skills, and buildings are in get_hero/get_town. Camera, roads, and reachable tiles are in get_map. Battle stacks, hexes, and legal actions are in get_battle.";
 			state["inputSchema"]["type"].String() = "object";
 			state["inputSchema"]["properties"].Struct();
 
 			JsonNode map;
 			map["name"].String() = "get_map";
-			map["description"].String() = "What is on the adventure-map camera right now: view rectangle, terrain+walk (land/water/blocked/rock) with roads and rivers on those tiles, fog count, and visitable objects in that rectangle (kind=subterranean_gate|monster|town|hero|loot|dwelling|flaggable|visit|…). Decorative trees are omitted. Armies and dialogs stay in get_state.";
+			map["description"].String() = "Adventure-map camera: view rectangle, terrain+walk (land/water/blocked/rock) with roads and rivers, fog count, visitable objects in that rectangle, and tiles the current hero can reach this turn (reach kind=walk|visit|battle). Decorative trees are omitted. Hero/town details stay in get_hero/get_town. Battle stays in get_battle.";
 			map["inputSchema"]["type"].String() = "object";
 			map["inputSchema"]["properties"].Struct();
+
+			JsonNode battle;
+			battle["name"].String() = "get_battle";
+			battle["description"].String() = "Current battle: round, terrain, active stack (active=yes), whose turn (active_turn=yours|enemy|busy|none), battle heroes, stacks (id, side, creature, count, hp, hex, shots, waited), and a can line listing legal attack target ids plus wait=yes|no and defend=yes. Waits until battle animations finish. Use stack ids from here for attack. Returns battle: none when not in combat.";
+			battle["inputSchema"]["type"].String() = "object";
+			battle["inputSchema"]["properties"].Struct();
+
+			JsonNode hero;
+			hero["name"].String() = "get_hero";
+			hero["description"].String() = "One owned hero in detail: army, mana, primary skills, secondary skills, artifacts, spellbook. Omit hero to use the selected adventure-map hero, or the first owned hero.";
+			hero["inputSchema"]["type"].String() = "object";
+			hero["inputSchema"]["properties"]["hero"] = integerProperty("Hero id from get_state. Omit for the selected hero.");
+
+			JsonNode town;
+			town["name"].String() = "get_town";
+			town["description"].String() = "One visible town in detail: army, visiting and garrison heroes, buildings, and recruitable creatures.";
+			town["inputSchema"]["type"].String() = "object";
+			town["inputSchema"]["properties"]["town"] = integerProperty("Town id from get_state.");
+			town["inputSchema"]["required"].Vector().push_back(jsonString("town"));
 
 			JsonNode move;
 			move["name"].String() = "move_hero";
@@ -383,9 +402,9 @@ struct McpServer::Impl
 
 			JsonNode attack;
 			attack["name"].String() = "attack";
-			attack["description"].String() = "In a battle, attack an enemy stack with the active unit (stack active=yes in get_state). Shoots when the unit can shoot. Otherwise walks up and strikes in melee. Waits until battle animations finish, then until the next player decision. If attack fails as out of range, use defend or wait instead of repeating attack. Returns a get_state snapshot.";
+			attack["description"].String() = "In a battle, attack an enemy stack with the active unit (stack active=yes in get_battle). Shoots when the unit can shoot. Otherwise walks up and strikes in melee. Waits until battle animations finish, then until the next player decision. If attack fails as out of range, use defend or wait instead of repeating attack. Returns a get_battle snapshot.";
 			attack["inputSchema"]["type"].String() = "object";
-			attack["inputSchema"]["properties"]["stack"] = integerProperty("Enemy stack id from get_state.");
+			attack["inputSchema"]["properties"]["stack"] = integerProperty("Enemy stack id from get_battle.");
 			attack["inputSchema"]["required"].Vector().push_back(jsonString("stack"));
 
 			JsonNode answer;
@@ -398,13 +417,13 @@ struct McpServer::Impl
 
 			JsonNode wait;
 			wait["name"].String() = "wait";
-			wait["description"].String() = "In a battle, wait with the active stack so another unit can act first this round. Returns after the next player decision, with a get_state snapshot.";
+			wait["description"].String() = "In a battle, wait with the active stack so another unit can act first this round. Returns after the next player decision, with a get_battle snapshot.";
 			wait["inputSchema"]["type"].String() = "object";
 			wait["inputSchema"]["properties"].Struct();
 
 			JsonNode defend;
 			defend["name"].String() = "defend";
-			defend["description"].String() = "In a battle, defend with the active stack, ending its turn for this round. Returns after the next player decision, with a get_state snapshot.";
+			defend["description"].String() = "In a battle, defend with the active stack, ending its turn for this round. Returns after the next player decision, with a get_battle snapshot.";
 			defend["inputSchema"]["type"].String() = "object";
 			defend["inputSchema"]["properties"].Struct();
 
@@ -417,6 +436,9 @@ struct McpServer::Impl
 			JsonNode result;
 			result["tools"].Vector().push_back(std::move(state));
 			result["tools"].Vector().push_back(std::move(map));
+			result["tools"].Vector().push_back(std::move(battle));
+			result["tools"].Vector().push_back(std::move(hero));
+			result["tools"].Vector().push_back(std::move(town));
 			result["tools"].Vector().push_back(std::move(move));
 			result["tools"].Vector().push_back(std::move(attack));
 			result["tools"].Vector().push_back(std::move(wait));
@@ -447,13 +469,39 @@ struct McpServer::Impl
 			std::string text;
 			if(name == "get_state")
 			{
-				if(!waitForBattleIdle())
-					text = "warning: timed out waiting for battle animations to end\n";
-				text += callOnGui([] { return buildMcpGameState(); });
+				text = callOnGui([] { return buildMcpGameState(); });
 			}
 			else if(name == "get_map")
 			{
 				text = callOnGui([] { return buildMcpMapState(); });
+			}
+			else if(name == "get_battle")
+			{
+				if(!waitForBattleIdle())
+					text = "warning: timed out waiting for battle animations to end\n";
+				text += callOnGui([] { return buildMcpBattleState(); });
+			}
+			else if(name == "get_hero")
+			{
+				std::string error;
+				const std::optional<int> hero = readInt(arguments["hero"], error, "hero", false);
+				if(!error.empty())
+				{
+					response.body = jsonToolResult(request, error, true);
+					return response;
+				}
+				text = callOnGui([hero] { return buildMcpHeroState(hero); });
+			}
+			else if(name == "get_town")
+			{
+				std::string error;
+				const std::optional<int> town = readInt(arguments["town"], error, "town", true);
+				if(!error.empty() || !town)
+				{
+					response.body = jsonToolResult(request, error.empty() ? "error: town is required" : error, true);
+					return response;
+				}
+				text = callOnGui([town] { return buildMcpTownState(*town); });
 			}
 			else if(name == "move_hero")
 			{

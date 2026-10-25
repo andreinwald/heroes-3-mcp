@@ -12,9 +12,20 @@
 #include <optional>
 #include <string>
 
+class CCallback;
+class CPlayerBattleCallback;
+
+namespace battle
+{
+class Unit;
+}
+
 /// Call only on the GUI thread, while holding the interface mutex.
 /// z or heroId omitted selects the hero's floor and the hero on the adventure map.
 std::string mcpMoveHero(int x, int y, std::optional<int> z, std::optional<int> heroId);
+
+/// True when the actor has a legal shot or melee against the target. GUI thread, state mutex held.
+bool mcpCanAttackTarget(CCallback & cb, const CPlayerBattleCallback & battle, const battle::Unit & actor, const battle::Unit & target);
 
 /// Attack with the active stack. A shot if it can shoot, otherwise a melee attack, walking up if needed.
 /// Call only on the GUI thread, while holding the interface mutex.
