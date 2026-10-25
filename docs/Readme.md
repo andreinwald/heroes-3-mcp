@@ -10,7 +10,7 @@ https://github.com/user-attachments/assets/77dab1f3-a235-43d6-a211-92ae925f6e4b
 
 Prerequisites:
 
-1. You must own Heroes of Might and Magic III and have the original game files. On [GOG](https://www.gog.com/en/game/heroes_of_might_and_magic_3_complete_edition) the Complete Edition is about 3 EUR.
+1. You must own Heroes of Might and Magic III and have the original game files. On [GOG the game is about 3 EUR](https://www.gog.com/en/game/heroes_of_might_and_magic_3_complete_edition).
 2. This fork changes the engine, so you have to compile VCMI from this repository.
 3. A [Mistral API key](https://console.mistral.ai/).
 4. [Node.js](https://nodejs.org/) for the game agent.
@@ -19,7 +19,7 @@ Prerequisites:
 
 This project is based on [VCMI](https://vcmi.eu/), an open-source Heroes of Might and Magic III engine. It does not include the full game: you still need the original data files (`Data`, `Maps`, `Mp3`).
 
-The easiest source is a GOG purchase. Download the Windows offline installer (`.exe` plus matching `.bin`) from their website:
+The easiest source is a [GOG game](https://www.gog.com/en/game/heroes_of_might_and_magic_3_complete_edition) purchase. Download the Windows offline installer (`.exe` plus matching `.bin`) from their website:
 
 ![GOG offline installer](players/images/gog_offline_installer.png)
 
