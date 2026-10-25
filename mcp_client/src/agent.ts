@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { styleText } from "node:util";
 
 import { config as loadEnv } from "dotenv";
 import { Mistral } from "@mistralai/mistralai";
@@ -30,6 +31,11 @@ const IDLE_LIMIT = 3;
 
 function env(name: string, fallback = ""): string {
 	return (process.env[name] ?? fallback).trim();
+}
+
+function printError(message: string): void {
+	const text = process.stderr.isTTY ? styleText("red", message) : message;
+	console.error(text);
 }
 
 function mcpToolsToMistral(tools: McpTool[]): Tool[] {
@@ -91,8 +97,12 @@ function trimHistory(messages: ChatMessage[]): ChatMessage[] {
 
 async function main(): Promise<void> {
 	const apiKey = env("MISTRAL_API_KEY");
-	if (!apiKey)
-		throw new Error("Set MISTRAL_API_KEY in mcp_client/.env");
+	if (!apiKey) {
+		throw new Error(
+			"Cannot call Mistral: MISTRAL_API_KEY is missing or empty. " +
+				"In the mcp_client folder, copy .env.example to .env and put your API key on the MISTRAL_API_KEY= line.",
+		);
+	}
 
 	const model = env("MISTRAL_MODEL", "mistral-large-latest");
 	const mcpUrl = env("MCP_URL", "http://127.0.0.1:47321/mcp");
@@ -206,7 +216,11 @@ async function main(): Promise<void> {
 			}
 
 			await log.write({ type: "tool_result", step, id, name, isError, text });
-			console.log(`← ${isError ? "error " : ""}${preview(text)}`);
+			const resultLine = `← ${isError ? "error " : ""}${preview(text)}`;
+			if (isError)
+				printError(resultLine);
+			else
+				console.log(resultLine);
 			messages.push({ role: "tool", toolCallId: id, name, content: text });
 		}
 	}
@@ -217,6 +231,6 @@ async function main(): Promise<void> {
 }
 
 main().catch(async (error) => {
-	console.error(error instanceof Error ? error.message : error);
+	printError(error instanceof Error ? error.message : String(error));
 	process.exitCode = 1;
 });
