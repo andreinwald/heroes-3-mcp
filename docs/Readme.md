@@ -1,8 +1,8 @@
 # Mistral Le Chonk plays Heroes of Might and Magic III
-This repo creates MCP server inside game engine and harness where LLM model controls and plays game
 
+This repo creates MCP server inside game engine and harness where LLM model controls and plays game.
 
-
+<video src="../mcp_client/video.mp4" controls width="100%"></video>
 
 
 
