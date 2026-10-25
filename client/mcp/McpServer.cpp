@@ -259,16 +259,49 @@ struct McpServer::Impl
 		return future.get();
 	}
 
+	static constexpr auto BATTLE_IDLE_TIMEOUT = std::chrono::seconds(90);
+
+	bool waitForBattleIdle()
+	{
+		auto status = callOnGui([] { return mcpBattleIsBusy() ? "busy" : "idle"; });
+		if(status == "idle")
+			return true;
+		if(status != "busy")
+			return false;
+
+		McpBattleWaiter::instance().arm();
+		status = callOnGui([] { return mcpBattleIsBusy() ? "busy" : "idle"; });
+		if(status != "busy")
+		{
+			McpBattleWaiter::instance().cancel();
+			return status == "idle";
+		}
+		return McpBattleWaiter::instance().waitUntilReady(BATTLE_IDLE_TIMEOUT);
+	}
+
 	std::string completeBattleTool(std::string text)
 	{
 		if(text.rfind("error:", 0) == 0 || text.rfind("Timed out", 0) == 0 || text.rfind("MCP server", 0) == 0)
 			return text;
 
-		if(!McpBattleWaiter::instance().waitUntilReady(std::chrono::seconds(90)))
+		if(!McpBattleWaiter::instance().waitUntilReady(BATTLE_IDLE_TIMEOUT))
 			text += "warning: timed out waiting for the next battle decision\n";
 
 		text += callOnGui([] { return buildMcpGameState(); });
 		return text;
+	}
+
+	std::string runBattleAction(const std::function<std::string()> & action)
+	{
+		waitForBattleIdle();
+		std::string text = callOnGui(action);
+		if(text.find("battle animations are playing") != std::string::npos
+			|| text.find("wait for the current battle action to finish") != std::string::npos)
+		{
+			waitForBattleIdle();
+			text = callOnGui(action);
+		}
+		return completeBattleTool(text);
 	}
 
 	HttpResponse handleJson(const std::string & body)
@@ -327,7 +360,7 @@ struct McpServer::Impl
 		{
 			JsonNode state;
 			state["name"].String() = "get_state";
-			state["description"].String() = "Text snapshot of the visible game: date, resources, heroes, visible towns (pos, owner, relation=enemy|ally|neutral), map objects, blocking dialogs with numbered choices, and the current battle (active_turn=yours|enemy|busy|none; call attack/wait/defend only when active_turn=yours). Roads are in get_map, not here.";
+			state["description"].String() = "Text snapshot of the visible game: date, resources, heroes, visible towns (pos, owner, relation=enemy|ally|neutral), map objects, blocking dialogs with numbered choices, and the current battle (active_turn=yours|enemy; waits until battle animations finish before returning). Roads are in get_map, not here.";
 			state["inputSchema"]["type"].String() = "object";
 			state["inputSchema"]["properties"].Struct();
 
@@ -350,7 +383,7 @@ struct McpServer::Impl
 
 			JsonNode attack;
 			attack["name"].String() = "attack";
-			attack["description"].String() = "In a battle, attack an enemy stack with the active unit. Shoots when the unit can shoot. Otherwise walks up and strikes in melee. Returns after the next player decision, with a get_state snapshot.";
+			attack["description"].String() = "In a battle, attack an enemy stack with the active unit (stack active=yes in get_state). Shoots when the unit can shoot. Otherwise walks up and strikes in melee. Waits until battle animations finish, then until the next player decision. If attack fails as out of range, use defend or wait instead of repeating attack. Returns a get_state snapshot.";
 			attack["inputSchema"]["type"].String() = "object";
 			attack["inputSchema"]["properties"]["stack"] = integerProperty("Enemy stack id from get_state.");
 			attack["inputSchema"]["required"].Vector().push_back(jsonString("stack"));
@@ -414,7 +447,9 @@ struct McpServer::Impl
 			std::string text;
 			if(name == "get_state")
 			{
-				text = callOnGui([] { return buildMcpGameState(); });
+				if(!waitForBattleIdle())
+					text = "warning: timed out waiting for battle animations to end\n";
+				text += callOnGui([] { return buildMcpGameState(); });
 			}
 			else if(name == "get_map")
 			{
@@ -443,15 +478,15 @@ struct McpServer::Impl
 					response.body = jsonToolResult(request, error.empty() ? "error: stack is required" : error, true);
 					return response;
 				}
-				text = completeBattleTool(callOnGui([stack] { return mcpAttack(*stack); }));
+				text = runBattleAction([stack] { return mcpAttack(*stack); });
 			}
 			else if(name == "wait")
 			{
-				text = completeBattleTool(callOnGui([] { return mcpBattleWait(); }));
+				text = runBattleAction([] { return mcpBattleWait(); });
 			}
 			else if(name == "defend")
 			{
-				text = completeBattleTool(callOnGui([] { return mcpBattleDefend(); }));
+				text = runBattleAction([] { return mcpBattleDefend(); });
 			}
 			else if(name == "answer")
 			{

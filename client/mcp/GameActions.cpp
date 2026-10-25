@@ -340,7 +340,8 @@ std::string mcpAttack(int stackId)
 	}
 
 	if(!action)
-		return "error: " + creatureName(*actor) + " cannot attack " + creatureName(*target);
+		return "error: " + creatureName(*actor) + " cannot attack " + creatureName(*target)
+			+ " (out of range or no legal move; use defend or wait, or pick another target)";
 
 	std::string result = "attack";
 	result += " " + field("action", attackActionName(action->actionType));

@@ -17,3 +17,7 @@ std::string buildMcpGameState();
 
 /// Adventure-map camera FOV: terrain, roads, rivers, visitable objects. GUI thread only.
 std::string buildMcpMapState();
+
+/// True while a battle window is playing animations or is not yet accepting a player decision.
+/// False on the adventure map, and while the enemy is acting. GUI thread only.
+bool mcpBattleIsBusy();

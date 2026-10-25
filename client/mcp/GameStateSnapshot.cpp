@@ -343,12 +343,15 @@ void appendBattle(std::string & out, CCallback & cb, const ITranslator & transla
 		if(tactics > 0)
 			out += " " + field("tactics", std::to_string(tactics));
 
-		if(const battle::Unit * active = battle->battleActiveUnit())
+		const battle::Unit * activeUnit = battle->battleActiveUnit();
+		const int activeStackId = activeUnit ? activeUnit->unitId() : -1;
+
+		if(activeUnit)
 		{
-			out += " " + field("active", std::to_string(active->unitId()));
+			out += " " + field("active", std::to_string(activeStackId));
 			const BattleSide mySide = battle->battleGetMySide();
-			const char * turn = active->unitSide() == mySide ? "yours" : "enemy";
-			if(active->unitSide() == mySide)
+			const char * turn = activeUnit->unitSide() == mySide ? "yours" : "enemy";
+			if(activeUnit->unitSide() == mySide)
 			{
 				if(const std::shared_ptr<BattleInterface> battleUi = CPlayerInterface::battleInt;
 					battleUi && battleUi->getBattleID() == battleID && (battleUi->hasAnimations() || !battleUi->makingTurn()))
@@ -395,6 +398,8 @@ void appendBattle(std::string & out, CCallback & cb, const ITranslator & transla
 			out += " " + field("count", std::to_string(stack->getCount()));
 			out += " " + field("hp", std::to_string(stack->getFirstHPleft()) + "/" + std::to_string(maxHealth));
 			out += " " + field("hex", std::to_string(stack->getPosition().toInt()));
+			if(stack->unitId() == activeStackId)
+				out += " active=yes";
 			if(stack->isShooter())
 				out += " " + field("shots", std::to_string(stack->shots.available()));
 			if(stack->waited())
@@ -778,6 +783,37 @@ void appendViewportObjects(std::string & out, CCallback & cb, const MapViewport 
 	}
 }
 
+}
+
+bool mcpBattleIsBusy()
+{
+	if(!GAME || !GAME->interface() || !GAME->interface()->cb)
+		return false;
+
+	CCallback & cb = *GAME->interface()->cb;
+	std::shared_lock stateLock(CGameState::mutex);
+
+	const auto battles = cb.getActiveBattles();
+	if(battles.empty() || !battles.begin()->second)
+		return false;
+
+	const BattleID battleID = battles.begin()->first;
+	const CPlayerBattleCallback & battle = *battles.begin()->second;
+	const std::shared_ptr<BattleInterface> battleUi = CPlayerInterface::battleInt;
+	if(!battleUi || battleUi->getBattleID() != battleID)
+		return true;
+
+	if(battleUi->hasAnimations())
+		return true;
+
+	const battle::Unit * active = battle.battleActiveUnit();
+	if(!active)
+		return true;
+
+	if(active->unitSide() != battle.battleGetMySide())
+		return false;
+
+	return !battleUi->makingTurn();
 }
 
 std::string buildMcpGameState()

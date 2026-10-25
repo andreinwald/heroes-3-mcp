@@ -175,7 +175,8 @@ function trimHistory(messages: ChatMessage[]): ChatMessage[] {
 		return head;
 
 	let tail = messages.slice(restStart).slice(-budget);
-	while (tail.length > 0 && tail[0].role !== "user")
+	// Head already includes the opening user turn; drop orphaned tool results at the tail cut.
+	while (tail.length > 0 && tail[0].role === "tool")
 		tail = tail.slice(1);
 
 	return [...head, ...tail];
