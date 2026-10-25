@@ -1,6 +1,6 @@
 # Mistral Le Chonk plays Heroes of Might and Magic III
 
-This repository adds an MCP server inside the VCMI game client and a Node.js agent that lets a Mistral model play the game.
+This repository adds an MCP server into game engine (C++) code and game harness (Typescript) that lets a Mistral model play the game.
 
 The agent walks the adventure map, picks up resources, visits objects, fights battles (attack, wait, defend), answers dialogs, and ends the day when movement runs out.
 
@@ -27,8 +27,7 @@ After you compile and launch VCMI, the launcher asks where those files are. Poin
 
 ![VCMI launcher — Heroes III data files](players/images/gamefiles.png)
 
-Skip “download a prebuilt VCMI” in the player install guides below; use the binary you built in step 2.
-
+More info:
 - [Windows](players/Installation_Windows.md)
 - [macOS](players/Installation_macOS.md)
 - [Linux](players/Installation_Linux.md)
