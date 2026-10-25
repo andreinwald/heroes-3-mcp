@@ -23,7 +23,11 @@ The easiest source is a GOG purchase. Download the Windows offline installer (`.
 
 ![GOG offline installer](players/images/gog_offline_installer.png)
 
-After you compile and launch VCMI, the launcher asks where those files are. Point it at the installer (or at an existing Heroes III install). Skip “download a prebuilt VCMI” in the player install guides below; use the binary you built in step 2.
+After you compile and launch VCMI, the launcher asks where those files are. Point it at the installer (or at an existing Heroes III install).
+
+![VCMI launcher — Heroes III data files](players/images/gamefiles.png)
+
+Skip “download a prebuilt VCMI” in the player install guides below; use the binary you built in step 2.
 
 - [Windows](players/Installation_Windows.md)
 - [macOS](players/Installation_macOS.md)
