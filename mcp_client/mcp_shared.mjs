@@ -15,7 +15,7 @@ export const tools = [
 	{
 		name: "get_map",
 		description:
-			"Visible road tiles for pathing. Fog-of-war only: tiles the player cannot see are omitted. Horizontal runs are compacted (8,4-14,4). Use these coordinates with move_hero; objects and armies stay in get_state.",
+			"What is on the adventure-map camera right now: view rectangle, terrain+walk (land/water/blocked/rock) with roads and rivers, fog count, and visitable objects in that rectangle (kind=subterranean_gate|monster|town|hero|loot|dwelling|flaggable|visit|…). Decorative trees are omitted. Armies and dialogs stay in get_state.",
 		inputSchema: { type: "object", properties: {} },
 	},
 	{

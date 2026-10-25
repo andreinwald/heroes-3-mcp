@@ -100,6 +100,9 @@ public:
 
 	/// Saves every level of the whole map, fog included but without the hero path and debug overlays, and reports the files in chat
 	void exportScreenshot();
+
+	/// Rect of tiles currently shown in this view, including partial tiles at the edges.
+	Rect getVisibleTilesRect() const;
 };
 
 /// Main class that represents map view for puzzle map

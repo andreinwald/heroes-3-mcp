@@ -12,16 +12,23 @@
 #include "McpDialogs.h"
 
 #include "CPlayerInterface.h"
+#include "PlayerLocalState.h"
+#include "adventureMap/AdventureMapInterface.h"
 #include "battle/BattleInterface.h"
 #include "GameEngine.h"
 #include "GameInstance.h"
 #include "gui/WindowHandler.h"
+#include "mapView/MapView.h"
 #include "widgets/CComponent.h"
 #include "widgets/TextControls.h"
+
+#include <cstring>
 
 #include "../lib/CSkillHandler.h"
 #include "../lib/ConditionalWait.h"
 #include "../lib/GameLibrary.h"
+#include "../lib/Rect.h"
+#include "../lib/RiverHandler.h"
 #include "../lib/RoadHandler.h"
 #include "../lib/TerrainHandler.h"
 #include "../lib/mapping/TerrainTile.h"
@@ -30,11 +37,13 @@
 #include "../lib/battle/BattleSide.h"
 #include "../lib/battle/CPlayerBattleCallback.h"
 #include "../lib/callback/CCallback.h"
+#include "../lib/constants/EntityIdentifiers.h"
 #include "../lib/constants/Enumerations.h"
 #include "../lib/entities/ResourceTypeHandler.h"
 #include "../lib/mapObjects/CGHeroInstance.h"
 #include "../lib/mapObjects/CGResource.h"
 #include "../lib/mapObjects/CGTownInstance.h"
+#include "../lib/mapObjects/army/CArmedInstance.h"
 #include "../lib/mapObjects/army/CCreatureSet.h"
 #include "../lib/CStack.h"
 #include "../lib/gameState/CGameState.h"
@@ -407,114 +416,366 @@ void appendCaught(std::string & out, const std::string & kind, int id, const std
 	out += "\n";
 }
 
-std::string roadTypeName(const RoadType & road)
+std::string entityShortName(const std::string & jsonKey, const char * stripSuffix)
 {
-	std::string key = road.getJsonKey();
+	std::string key = jsonKey;
 	const auto colon = key.rfind(':');
 	if(colon != std::string::npos)
 		key = key.substr(colon + 1);
-	if(key.size() > 4 && key.compare(key.size() - 4, 4, "Road") == 0)
-		key.resize(key.size() - 4);
+	if(stripSuffix)
+	{
+		const size_t suffixLen = std::strlen(stripSuffix);
+		if(key.size() > suffixLen && key.compare(key.size() - suffixLen, suffixLen, stripSuffix) == 0)
+			key.resize(key.size() - suffixLen);
+	}
 	return key;
 }
 
-void appendRoads(std::string & out, CCallback & cb)
+std::string xyRange(int startX, int endX, int y)
+{
+	std::string text = std::to_string(startX) + "," + std::to_string(y);
+	if(endX != startX)
+		text += "-" + std::to_string(endX) + "," + std::to_string(y);
+	return text;
+}
+
+const char * mapObjectKind(MapObjectID id)
+{
+	switch(id.getNum())
+	{
+		case Obj::HERO:
+		case Obj::RANDOM_HERO:
+		case Obj::HERO_PLACEHOLDER:
+			return "hero";
+		case Obj::TOWN:
+		case Obj::RANDOM_TOWN:
+			return "town";
+		case Obj::MONSTER:
+		case Obj::RANDOM_MONSTER:
+		case Obj::RANDOM_MONSTER_L1:
+		case Obj::RANDOM_MONSTER_L2:
+		case Obj::RANDOM_MONSTER_L3:
+		case Obj::RANDOM_MONSTER_L4:
+		case Obj::RANDOM_MONSTER_L5:
+		case Obj::RANDOM_MONSTER_L6:
+		case Obj::RANDOM_MONSTER_L7:
+			return "monster";
+		case Obj::ARTIFACT:
+		case Obj::RANDOM_ART:
+		case Obj::RANDOM_TREASURE_ART:
+		case Obj::RANDOM_MINOR_ART:
+		case Obj::RANDOM_MAJOR_ART:
+		case Obj::RANDOM_RELIC_ART:
+		case Obj::SPELL_SCROLL:
+			return "artifact";
+		case Obj::RESOURCE:
+		case Obj::RANDOM_RESOURCE:
+		case Obj::CAMPFIRE:
+		case Obj::TREASURE_CHEST:
+		case Obj::SEA_CHEST:
+		case Obj::FLOTSAM:
+		case Obj::SHIPWRECK_SURVIVOR:
+		case Obj::PANDORAS_BOX:
+			return "loot";
+		case Obj::MINE:
+		case Obj::ABANDONED_MINE:
+		case Obj::LIGHTHOUSE:
+		case Obj::SHIPYARD:
+			return "flaggable";
+		case Obj::CREATURE_GENERATOR1:
+		case Obj::CREATURE_GENERATOR2:
+		case Obj::CREATURE_GENERATOR3:
+		case Obj::CREATURE_GENERATOR4:
+		case Obj::RANDOM_DWELLING:
+		case Obj::RANDOM_DWELLING_LVL:
+		case Obj::RANDOM_DWELLING_FACTION:
+		case Obj::REFUGEE_CAMP:
+		case Obj::WAR_MACHINE_FACTORY:
+			return "dwelling";
+		case Obj::SUBTERRANEAN_GATE:
+			return "subterranean_gate";
+		case Obj::MONOLITH_ONE_WAY_ENTRANCE:
+			return "monolith_entrance";
+		case Obj::MONOLITH_ONE_WAY_EXIT:
+			return "monolith_exit";
+		case Obj::MONOLITH_TWO_WAY:
+			return "monolith";
+		case Obj::WHIRLPOOL:
+			return "whirlpool";
+		case Obj::BOAT:
+			return "boat";
+		case Obj::BORDERGUARD:
+		case Obj::BORDER_GATE:
+		case Obj::QUEST_GUARD:
+		case Obj::GARRISON:
+		case Obj::GARRISON2:
+			return "gate";
+		case Obj::PRISON:
+			return "prison";
+		case Obj::SEER_HUT:
+			return "quest";
+		case Obj::SIGN:
+		case Obj::OCEAN_BOTTLE:
+			return "sign";
+		default:
+			return "visit";
+	}
+}
+
+struct MapViewport
+{
+	int minX = 0;
+	int minY = 0;
+	int maxX = -1;
+	int maxY = -1;
+	int z = 0;
+};
+
+MapViewport cameraViewport(CCallback & cb, CPlayerInterface & interface)
 {
 	const int3 mapSize = cb.getMapSize();
+	MapViewport view;
+	view.z = 0;
+	view.minX = 0;
+	view.minY = 0;
+	view.maxX = mapSize.x - 1;
+	view.maxY = mapSize.y - 1;
 
-	struct RoadTile
+	if(adventureInt && adventureInt->getMapView())
 	{
-		int3 pos;
-		std::string type;
+		const Rect tiles = adventureInt->getMapView()->getVisibleTilesRect();
+		view.z = adventureInt->getMapViewCenter().z;
+		view.minX = std::max(0, tiles.x);
+		view.minY = std::max(0, tiles.y);
+		view.maxX = std::min(mapSize.x - 1, tiles.x + tiles.w - 1);
+		view.maxY = std::min(mapSize.y - 1, tiles.y + tiles.h - 1);
+		return view;
+	}
+
+	const CGHeroInstance * hero = interface.localState->getCurrentHero();
+	if(!hero)
+	{
+		const auto heroes = cb.getHeroesInfo();
+		if(!heroes.empty())
+			hero = heroes.front();
+	}
+	if(!hero)
+		return view;
+
+	const int3 center = hero->visitablePos();
+	view.z = center.z;
+	constexpr int halfWidth = 10;
+	constexpr int halfHeight = 8;
+	view.minX = std::max(0, center.x - halfWidth);
+	view.minY = std::max(0, center.y - halfHeight);
+	view.maxX = std::min(mapSize.x - 1, center.x + halfWidth);
+	view.maxY = std::min(mapSize.y - 1, center.y + halfHeight);
+	return view;
+}
+
+bool inViewport(const MapViewport & view, const int3 & pos)
+{
+	return pos.z == view.z && pos.x >= view.minX && pos.x <= view.maxX && pos.y >= view.minY && pos.y <= view.maxY;
+}
+
+void appendViewportTerrain(std::string & out, CCallback & cb, const MapViewport & view)
+{
+	struct Group
+	{
+		std::string terrain;
+		std::string road;
+		std::string river;
+		std::string walk;
+		std::vector<int3> tiles;
 	};
 
-	std::vector<RoadTile> tiles;
-	for(int z = 0; z < mapSize.z; ++z)
+	std::map<std::string, Group> groups;
+	int visible = 0;
+	int hidden = 0;
+
+	for(int y = view.minY; y <= view.maxY; ++y)
 	{
-		for(int y = 0; y < mapSize.y; ++y)
+		for(int x = view.minX; x <= view.maxX; ++x)
 		{
-			for(int x = 0; x < mapSize.x; ++x)
+			const int3 pos(x, y, view.z);
+			const TerrainTile * tile = cb.tryGetTile(pos);
+			if(!tile)
 			{
-				const int3 pos(x, y, z);
-				const TerrainTile * tile = cb.tryGetTile(pos);
-				if(!tile || !tile->hasRoad())
-					continue;
-				const RoadType * road = tile->getRoad();
-				if(!road)
-					continue;
-				tiles.push_back({pos, roadTypeName(*road)});
+				++hidden;
+				continue;
 			}
+			++visible;
+
+			const TerrainType * terrain = tile->getTerrain();
+			std::string walk = "land";
+			if(terrain && terrain->isWater())
+				walk = "water";
+			else if(terrain && !terrain->isPassable())
+				walk = "rock";
+			else if(tile->blocked() && !tile->visitable())
+				walk = "blocked";
+
+			std::string terrainName = terrain ? entityShortName(terrain->getJsonKey(), nullptr) : "unknown";
+			std::string roadName;
+			if(tile->hasRoad() && tile->getRoad())
+				roadName = entityShortName(tile->getRoad()->getJsonKey(), "Road");
+			std::string riverName;
+			if(tile->hasRiver() && tile->getRiver())
+				riverName = entityShortName(tile->getRiver()->getJsonKey(), "River");
+
+			const std::string key = terrainName + "|" + walk + "|" + roadName + "|" + riverName;
+			Group & group = groups[key];
+			if(group.tiles.empty())
+			{
+				group.terrain = std::move(terrainName);
+				group.walk = std::move(walk);
+				group.road = std::move(roadName);
+				group.river = std::move(riverName);
+			}
+			group.tiles.push_back(pos);
 		}
 	}
 
-	if(tiles.empty())
+	std::vector<const Group *> ordered;
+	ordered.reserve(groups.size());
+	for(const auto & entry : groups)
+		ordered.push_back(&entry.second);
+	std::sort(ordered.begin(), ordered.end(), [](const Group * left, const Group * right)
 	{
-		out += "roads: none\n";
+		if(left->terrain != right->terrain)
+			return left->terrain < right->terrain;
+		if(left->walk != right->walk)
+			return left->walk < right->walk;
+		if(left->road != right->road)
+			return left->road < right->road;
+		return left->river < right->river;
+	});
+
+	for(const Group * group : ordered)
+	{
+		out += "ground";
+		out += " " + field("terrain", group->terrain);
+		out += " " + field("walk", group->walk);
+		if(!group->road.empty())
+			out += " " + field("road", group->road);
+		if(!group->river.empty())
+			out += " " + field("river", group->river);
+		std::string coords;
+		int runY = -1;
+		int runStartX = -1;
+		int runEndX = -1;
+		const auto flushRun = [&]()
+		{
+			if(runStartX < 0)
+				return;
+			if(!coords.empty())
+				coords += " ";
+			coords += xyRange(runStartX, runEndX, runY);
+			runStartX = -1;
+			runEndX = -1;
+			runY = -1;
+		};
+		for(const int3 & pos : group->tiles)
+		{
+			if(runStartX >= 0 && pos.y == runY && pos.x == runEndX + 1)
+			{
+				runEndX = pos.x;
+				continue;
+			}
+			flushRun();
+			runY = pos.y;
+			runStartX = pos.x;
+			runEndX = pos.x;
+		}
+		flushRun();
+		out += " " + field("tiles", coords) + "\n";
+	}
+
+	if(hidden > 0)
+		out += "fog " + field("tiles", std::to_string(hidden)) + " " + field("visible", std::to_string(visible)) + "\n";
+}
+
+void appendViewportObjects(std::string & out, CCallback & cb, const MapViewport & view, const ITranslator & translator)
+{
+	struct MapObject
+	{
+		int3 pos;
+		std::string kind;
+		std::string name;
+		std::string owner;
+		std::string army;
+		int id = 0;
+	};
+
+	std::vector<MapObject> listed;
+	std::set<int> seen;
+	const PlayerColor viewer = cb.getPlayerID().value_or(PlayerColor::NEUTRAL);
+
+	const auto addObject = [&](const CGObjectInstance * obj)
+	{
+		if(!obj || obj->ID == Obj::EVENT)
+			return;
+		if(!obj->isVisitable())
+			return;
+		if(!inViewport(view, obj->visitablePos()))
+			return;
+		if(!seen.insert(obj->id.getNum()).second)
+			return;
+
+		MapObject item;
+		item.id = obj->id.getNum();
+		item.pos = obj->visitablePos();
+		item.kind = mapObjectKind(obj->ID);
+		item.name = objectLabel(*obj, viewer, translator);
+		item.owner = ownerText(obj->tempOwner);
+		if(const auto * armed = dynamic_cast<const CArmedInstance *>(obj))
+		{
+			if(armed->stacksCount() > 0)
+				item.army = armed->getArmyDescription().toString(&translator);
+		}
+		listed.push_back(std::move(item));
+	};
+
+	for(int y = view.minY; y <= view.maxY; ++y)
+	{
+		for(int x = view.minX; x <= view.maxX; ++x)
+		{
+			const int3 pos(x, y, view.z);
+			const TerrainTile * tile = cb.tryGetTile(pos);
+			if(!tile)
+				continue;
+			for(const ObjectInstanceID objId : tile->visitableObjects)
+				addObject(cb.tryGetObj(objId));
+		}
+	}
+
+	std::sort(listed.begin(), listed.end(), [](const MapObject & left, const MapObject & right)
+	{
+		if(left.pos.y != right.pos.y)
+			return left.pos.y < right.pos.y;
+		if(left.pos.x != right.pos.x)
+			return left.pos.x < right.pos.x;
+		return left.id < right.id;
+	});
+
+	if(listed.empty())
+	{
+		out += "objects: none\n";
 		return;
 	}
 
-	std::sort(tiles.begin(), tiles.end(), [](const RoadTile & left, const RoadTile & right)
+	for(const MapObject & item : listed)
 	{
-		if(left.type != right.type)
-			return left.type < right.type;
-		if(left.pos.z != right.pos.z)
-			return left.pos.z < right.pos.z;
-		if(left.pos.y != right.pos.y)
-			return left.pos.y < right.pos.y;
-		return left.pos.x < right.pos.x;
-	});
-
-	std::string currentType;
-	int currentZ = -1;
-	std::string coords;
-	int runY = -1;
-	int runStartX = -1;
-	int runEndX = -1;
-
-	const auto flushRun = [&]()
-	{
-		if(runStartX < 0)
-			return;
-		if(!coords.empty())
-			coords += " ";
-		coords += std::to_string(runStartX) + "," + std::to_string(runY);
-		if(runEndX != runStartX)
-			coords += "-" + std::to_string(runEndX) + "," + std::to_string(runY);
-		runStartX = -1;
-		runEndX = -1;
-		runY = -1;
-	};
-
-	const auto flushLine = [&]()
-	{
-		flushRun();
-		if(coords.empty())
-			return;
-		out += "road " + field("type", currentType) + " " + field("z", std::to_string(currentZ)) + " " + field("tiles", coords) + "\n";
-		coords.clear();
-	};
-
-	for(const RoadTile & tile : tiles)
-	{
-		if(tile.type != currentType || tile.pos.z != currentZ)
-		{
-			flushLine();
-			currentType = tile.type;
-			currentZ = tile.pos.z;
-		}
-
-		if(runStartX >= 0 && tile.pos.y == runY && tile.pos.x == runEndX + 1)
-		{
-			runEndX = tile.pos.x;
-			continue;
-		}
-
-		flushRun();
-		runY = tile.pos.y;
-		runStartX = tile.pos.x;
-		runEndX = tile.pos.x;
+		out += "object";
+		out += " " + field("kind", item.kind);
+		out += " " + field("id", std::to_string(item.id));
+		out += " " + field("pos", posText(item.pos));
+		out += " " + field("owner", item.owner);
+		out += " " + field("name", item.name);
+		if(!item.army.empty())
+			out += " " + field("army", item.army);
+		out += "\n";
 	}
-	flushLine();
 }
 
 }
@@ -697,15 +958,21 @@ std::string buildMcpMapState()
 
 	std::shared_lock stateLock(CGameState::mutex);
 
-	CCallback & cb = *GAME->interface()->cb;
+	CPlayerInterface & interface = *GAME->interface();
+	CCallback & cb = *interface.cb;
+	const ITranslator & translator = GAME->translator();
 	const int3 mapSize = cb.getMapSize();
+	const MapViewport view = cameraViewport(cb, interface);
 
 	std::string out;
 	out += "map";
 	out += " " + field("width", std::to_string(mapSize.x));
 	out += " " + field("height", std::to_string(mapSize.y));
 	out += " " + field("levels", std::to_string(mapSize.z));
+	out += " " + field("z", std::to_string(view.z));
+	out += " " + field("view", std::to_string(view.minX) + "," + std::to_string(view.minY) + "-" + std::to_string(view.maxX) + "," + std::to_string(view.maxY));
 	out += "\n";
-	appendRoads(out, cb);
+	appendViewportTerrain(out, cb, view);
+	appendViewportObjects(out, cb, view, translator);
 	return out;
 }

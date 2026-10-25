@@ -15,5 +15,5 @@
 /// Call only on the GUI thread, while holding the interface mutex.
 std::string buildMcpGameState();
 
-/// Visible road tiles. Call only on the GUI thread, while holding the interface mutex.
+/// Adventure-map camera FOV: terrain, roads, rivers, visitable objects. GUI thread only.
 std::string buildMcpMapState();

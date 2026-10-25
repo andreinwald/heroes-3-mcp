@@ -343,6 +343,11 @@ int3 AdventureMapInterface::getMapViewCenter() const
 	return mapViewCenter;
 }
 
+std::shared_ptr<MapView> AdventureMapInterface::getMapView() const
+{
+	return widget ? widget->getMapView() : nullptr;
+}
+
 void AdventureMapInterface::keyPressed(EShortcut key)
 {
 	switch(key)

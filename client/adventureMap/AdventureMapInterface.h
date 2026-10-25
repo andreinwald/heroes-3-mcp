@@ -203,6 +203,9 @@ public:
 	/// tile the map view is currently centered on
 	int3 getMapViewCenter() const;
 
+	/// Adventure map camera; null when the adventure UI is not open.
+	std::shared_ptr<MapView> getMapView() const;
+
 	/// called by MapView whenever currently visible area changes
 	/// visibleArea describes now visible map section measured in tiles
 	void onMapViewMoved(const Rect & visibleArea, int mapLevel);

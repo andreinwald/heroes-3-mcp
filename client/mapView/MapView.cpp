@@ -302,6 +302,11 @@ void MapView::exportScreenshot()
 	}
 }
 
+Rect MapView::getVisibleTilesRect() const
+{
+	return model->getTilesTotalRect();
+}
+
 PuzzleMapView::PuzzleMapView(const Point & offset, const Point & dimensions, const int3 & tileToCenter)
 	: BasicMapView(offset, dimensions, false)
 {
