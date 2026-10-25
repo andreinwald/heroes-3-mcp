@@ -28,6 +28,10 @@ type ChatMessage =
 
 const MAX_MESSAGES = 80;
 const IDLE_LIMIT = 3;
+const MISTRAL_MODEL = "mistral-large-latest";
+const MCP_URL = "http://127.0.0.1:47321/mcp";
+/** 0 = no limit */
+const MAX_STEPS = 0;
 
 function env(name: string, fallback = ""): string {
 	return (process.env[name] ?? fallback).trim();
@@ -104,19 +108,15 @@ async function main(): Promise<void> {
 		);
 	}
 
-	const model = env("MISTRAL_MODEL", "mistral-large-latest");
-	const mcpUrl = env("MCP_URL", "http://127.0.0.1:47321/mcp");
-	const maxSteps = Number(env("MAX_STEPS", "0")) || 0;
-
 	const system = (await readFile(path.join(root, "system.md"), "utf8")).trim();
 	const log = new RunLog(path.join(root, "logs"), new Date());
 	await log.open();
 	console.log(`log ${log.file}`);
 
-	const game = await GameMcp.connect(mcpUrl);
+	const game = await GameMcp.connect(MCP_URL);
 	const tools = await game.listTools();
-	await log.write({ type: "mcp_connected", url: mcpUrl, tools: tools.map((tool) => tool.name) });
-	console.log(`mcp ${mcpUrl} tools=${tools.map((tool) => tool.name).join(",")}`);
+	await log.write({ type: "mcp_connected", url: MCP_URL, tools: tools.map((tool) => tool.name) });
+	console.log(`mcp ${MCP_URL} tools=${tools.map((tool) => tool.name).join(",")}`);
 
 	const mistral = new Mistral({ apiKey });
 	const mistralTools = mcpToolsToMistral(tools);
@@ -137,19 +137,19 @@ async function main(): Promise<void> {
 		stopReason = "SIGTERM";
 	});
 
-	await log.write({ type: "run_start", model, mcpUrl, systemFile: "system.md" });
+	await log.write({ type: "run_start", model: MISTRAL_MODEL, mcpUrl: MCP_URL, systemFile: "system.md" });
 
 	while (!stopReason) {
-		if (maxSteps > 0 && step >= maxSteps) {
+		if (MAX_STEPS > 0 && step >= MAX_STEPS) {
 			stopReason = "max_steps";
 			break;
 		}
 		step += 1;
 		messages = trimHistory(messages);
 
-		await log.write({ type: "llm_request", step, model, messages });
+		await log.write({ type: "llm_request", step, model: MISTRAL_MODEL, messages });
 		const response = await mistral.chat.complete({
-			model,
+			model: MISTRAL_MODEL,
 			messages: messages as Parameters<typeof mistral.chat.complete>[0]["messages"],
 			tools: mistralTools,
 			toolChoice: "auto",
