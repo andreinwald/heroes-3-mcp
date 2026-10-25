@@ -2,7 +2,7 @@
 
 This repo creates MCP server inside game engine and harness where LLM model controls and plays game.
 
-<video src="../mcp_client/video.mp4" controls width="100%"></video>
+https://github.com/user-attachments/assets/77dab1f3-a235-43d6-a211-92ae925f6e4b
 
 
 
