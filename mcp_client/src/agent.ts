@@ -114,17 +114,27 @@ function parseArgs(raw: string | Record<string, unknown> | null | undefined): Re
 	}
 }
 
+function tokenUsageLine(usage: { promptTokens?: number; completionTokens?: number } | undefined): string {
+	const input = usage?.promptTokens ?? 0;
+	const output = usage?.completionTokens ?? 0;
+	return `[llm] ${input} in / ${output} out`;
+}
+
 function formatDurationMs(ms: number): string {
 	if (ms < 1000)
 		return `${Math.round(ms)}ms`;
 	return `${(ms / 1000).toFixed(2)}s`;
 }
 
-function preview(text: string, limit = 240): string {
-	const flat = text.replace(/\s+/g, " ").trim();
-	if (flat.length <= limit)
-		return flat;
-	return flat.slice(0, limit - 1) + "…";
+function modelTextForConsole(content: string): string {
+	return content.replace(/\s+/g, " ").trim();
+}
+
+function printModel(content: string): void {
+	const line = modelTextForConsole(content);
+	if (!line)
+		return;
+	console.log(`[model] ${line}`);
 }
 
 function trimHistory(messages: ChatMessage[]): ChatMessage[] {
@@ -221,6 +231,7 @@ async function main(): Promise<void> {
 
 		const toolCalls = (message.toolCalls ?? []) as ToolCall[];
 		const content = typeof message.content === "string" ? message.content : "";
+		const usage = response.usage;
 		await log.write({
 			type: "llm_response",
 			step,
@@ -228,11 +239,14 @@ async function main(): Promise<void> {
 			finishReason: choice.finishReason,
 			content,
 			toolCalls,
+			promptTokens: usage?.promptTokens ?? null,
+			completionTokens: usage?.completionTokens ?? null,
+			totalTokens: usage?.totalTokens ?? null,
 			response,
 		});
-
+		console.log(tokenUsageLine(usage));
 		if (content)
-			console.log(`\n#${step} ${preview(content, 400)}`);
+			printModel(content);
 
 		if (toolCalls.length === 0) {
 			idle += 1;
@@ -278,7 +292,7 @@ async function main(): Promise<void> {
 			const durationMs = performance.now() - started;
 
 			await log.write({ type: "tool_result", step, id, name, isError, durationMs, text });
-			const resultLine = `${name} ${formatDurationMs(durationMs)}${isError ? " error" : ""} — ${preview(text)}`;
+			const resultLine = `[action] ${name} ${formatDurationMs(durationMs)}${isError ? " error" : ""}`;
 			printTool(resultLine);
 			messages.push({ role: "tool", toolCallId: id, name, content: text });
 		}
