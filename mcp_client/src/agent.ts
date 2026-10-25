@@ -34,6 +34,8 @@ const MISTRAL_MODEL = "mistral-large-4";
 const REASONING_EFFORT = ReasoningEffort.None;
 const MCP_URL = "http://127.0.0.1:47321/mcp";
 const MAX_STEPS = 1000;
+const LLM_RETRY_ATTEMPTS = 3;
+const LLM_RETRY_DELAY_MS = 2_000;
 
 function env(name: string, fallback = ""): string {
 	return (process.env[name] ?? fallback).trim();
@@ -81,6 +83,34 @@ function llmErrorRecord(error: unknown): Record<string, unknown> {
 	if (error instanceof Error)
 		return { ok: false, message: error.message, name: error.name };
 	return { ok: false, message: String(error) };
+}
+
+function isRetryableLlmError(error: unknown): boolean {
+	if (error instanceof MistralError) {
+		const code = error.statusCode;
+		return code === 429 || code === 502 || code === 503 || code === 504;
+	}
+	if (!(error instanceof Error))
+		return false;
+	if (error.name === "ConnectionError" || error.name === "RequestTimeoutError")
+		return true;
+	const msg = error.message.toLowerCase();
+	return msg.includes("fetch failed")
+		|| msg.includes("econnreset")
+		|| msg.includes("etimedout")
+		|| msg.includes("socket hang up");
+}
+
+function sleepMs(ms: number): Promise<void> {
+	return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function llmErrorConsoleText(error: unknown, record: Record<string, unknown>): string {
+	if (error instanceof Error && error.name === "ConnectionError")
+		return "Mistral API network error (connection failed). Check internet and run again.";
+	if (record.body && typeof record.body === "object")
+		return JSON.stringify(record.body);
+	return String(record.message ?? error);
 }
 
 function mcpToolsToMistral(tools: McpTool[]): Tool[] {
@@ -259,26 +289,40 @@ async function main(): Promise<void> {
 
 		await log.write({ type: "llm_request", step, model: MISTRAL_MODEL, messages });
 
-		let response: Awaited<ReturnType<typeof mistral.chat.complete>>;
-		try {
-			response = await mistral.chat.complete({
-				model: MISTRAL_MODEL,
-				messages: messages as Parameters<typeof mistral.chat.complete>[0]["messages"],
-				tools: mistralTools,
-				toolChoice: "auto",
-				reasoningEffort: REASONING_EFFORT,
-			});
-		} catch (error) {
-			const record = llmErrorRecord(error);
-			await log.write({ type: "llm_response", step, ...record });
-			const detail =
-				record.body && typeof record.body === "object"
-					? JSON.stringify(record.body)
-					: String(record.message ?? error);
-			printError(detail);
-			stopReason = "llm_error";
-			break;
+		let response: Awaited<ReturnType<typeof mistral.chat.complete>> | undefined;
+		let llmOk = false;
+		for (let attempt = 1; attempt <= LLM_RETRY_ATTEMPTS; attempt++) {
+			try {
+				response = await mistral.chat.complete({
+					model: MISTRAL_MODEL,
+					messages: messages as Parameters<typeof mistral.chat.complete>[0]["messages"],
+					tools: mistralTools,
+					toolChoice: "auto",
+					reasoningEffort: REASONING_EFFORT,
+				});
+				llmOk = true;
+				break;
+			} catch (error) {
+				if (attempt < LLM_RETRY_ATTEMPTS && isRetryableLlmError(error)) {
+					await log.write({
+						type: "llm_retry",
+						step,
+						attempt,
+						maxAttempts: LLM_RETRY_ATTEMPTS,
+						...llmErrorRecord(error),
+					});
+					await sleepMs(LLM_RETRY_DELAY_MS * attempt);
+					continue;
+				}
+				const record = { ...llmErrorRecord(error), attempts: attempt };
+				await log.write({ type: "llm_response", step, ...record });
+				printError(llmErrorConsoleText(error, record));
+				stopReason = "llm_error";
+				break;
+			}
 		}
+		if (!llmOk || !response)
+			break;
 
 		const choice = response.choices?.[0];
 		const message = choice?.message;
