@@ -6,6 +6,7 @@ import { styleText } from "node:util";
 import { config as loadEnv } from "dotenv";
 import { Mistral } from "@mistralai/mistralai";
 import { MistralError } from "@mistralai/mistralai/models/errors/mistralerror.js";
+import { ReasoningEffort } from "@mistralai/mistralai/models/components/reasoningeffort.js";
 import type { Tool } from "@mistralai/mistralai/models/components/tool.js";
 
 import { GameMcp, type McpTool } from "./gameMcp.ts";
@@ -27,16 +28,32 @@ type ChatMessage =
 	| { role: "assistant"; content?: string | null; toolCalls?: ToolCall[] }
 	| { role: "tool"; toolCallId: string; name: string; content: string };
 
-const MAX_MESSAGES = 80;
+const KEEP_HISTORY = 10;
 const IDLE_LIMIT = 3;
-/** Mistral Small 4 (v26.03) */
 const MISTRAL_MODEL = "mistral-small-2603";
+const REASONING_EFFORT = ReasoningEffort.None;
 const MCP_URL = "http://127.0.0.1:47321/mcp";
-/** 0 = no limit */
-const MAX_STEPS = 5;
+const MAX_STEPS = 50;
 
 function env(name: string, fallback = ""): string {
 	return (process.env[name] ?? fallback).trim();
+}
+
+/** Extra args after `npm start -- …` or `tsx src/agent.ts …` — one suggested next step, not a campaign goal. */
+function cliNextStep(): string | null {
+	const args = process.argv.slice(2).map((arg) => arg.trim()).filter(Boolean);
+	if (args.length === 0)
+		return null;
+	return args.join(" ");
+}
+
+function initialUserMessage(nextStep: string | null): string {
+	if (nextStep)
+		return (
+			`The game is running. Observe the current situation, then take this as your next step: ${nextStep}. ` +
+			"After that, keep playing on your own unless you are told otherwise."
+		);
+	return "The game is running. Observe the current situation, then start playing.";
 }
 
 function printError(message: string): void {
@@ -138,10 +155,10 @@ function printModel(content: string): void {
 }
 
 function trimHistory(messages: ChatMessage[]): ChatMessage[] {
-	if (messages.length <= MAX_MESSAGES)
+	if (messages.length <= KEEP_HISTORY)
 		return messages;
 	const system = messages[0];
-	return system ? [system, ...messages.slice(-(MAX_MESSAGES - 1))] : messages.slice(-MAX_MESSAGES);
+	return system ? [system, ...messages.slice(-(KEEP_HISTORY - 1))] : messages.slice(-KEEP_HISTORY);
 }
 
 async function main(): Promise<void> {
@@ -165,10 +182,13 @@ async function main(): Promise<void> {
 
 	const mistral = new Mistral({ apiKey });
 	const mistralTools = mcpToolsToMistral(tools);
+	const nextStep = cliNextStep();
+	if (nextStep)
+		console.log(`next step: ${nextStep}`);
 
 	let messages: ChatMessage[] = [
 		{ role: "system", content: `${system}\n\n${mcpToolsCatalog(tools)}` },
-		{ role: "user", content: "The game is running. Observe the current situation, then start playing." },
+		{ role: "user", content: initialUserMessage(nextStep) },
 	];
 
 	let step = 0;
@@ -182,7 +202,14 @@ async function main(): Promise<void> {
 		stopReason = "SIGTERM";
 	});
 
-	await log.write({ type: "run_start", model: MISTRAL_MODEL, mcpUrl: MCP_URL, systemFile: "system.md" });
+	await log.write({
+		type: "run_start",
+		model: MISTRAL_MODEL,
+		reasoningEffort: REASONING_EFFORT,
+		mcpUrl: MCP_URL,
+		systemFile: "system.md",
+		nextStep,
+	});
 
 	while (!stopReason) {
 		if (MAX_STEPS > 0 && step >= MAX_STEPS) {
@@ -201,6 +228,7 @@ async function main(): Promise<void> {
 				messages: messages as Parameters<typeof mistral.chat.complete>[0]["messages"],
 				tools: mistralTools,
 				toolChoice: "auto",
+				reasoningEffort: REASONING_EFFORT,
 			});
 		} catch (error) {
 			const record = llmErrorRecord(error);
