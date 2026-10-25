@@ -157,8 +157,28 @@ function printModel(content: string): void {
 function trimHistory(messages: ChatMessage[]): ChatMessage[] {
 	if (messages.length <= KEEP_HISTORY)
 		return messages;
-	const system = messages[0];
-	return system ? [system, ...messages.slice(-(KEEP_HISTORY - 1))] : messages.slice(-KEEP_HISTORY);
+
+	const head: ChatMessage[] = [];
+	let restStart = 0;
+	if (messages[0]?.role === "system") {
+		head.push(messages[0]);
+		restStart = 1;
+	}
+	// Keep the opening user turn; Mistral rejects `tool`/`assistant` immediately after `system`.
+	if (messages[restStart]?.role === "user") {
+		head.push(messages[restStart]);
+		restStart += 1;
+	}
+
+	const budget = KEEP_HISTORY - head.length;
+	if (budget <= 0)
+		return head;
+
+	let tail = messages.slice(restStart).slice(-budget);
+	while (tail.length > 0 && tail[0].role !== "user")
+		tail = tail.slice(1);
+
+	return [...head, ...tail];
 }
 
 async function main(): Promise<void> {
