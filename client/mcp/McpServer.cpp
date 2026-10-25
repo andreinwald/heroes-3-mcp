@@ -199,6 +199,30 @@ JsonNode integerProperty(const std::string & description)
 	return property;
 }
 
+JsonNode stringProperty(const std::string & description)
+{
+	JsonNode property;
+	property["type"].String() = "string";
+	property["description"].String() = description;
+	return property;
+}
+
+bool requireActionDescription(const JsonNode & arguments, std::string & error)
+{
+	const JsonNode & node = arguments["description"];
+	if(!node.isString())
+	{
+		error = "error: description is required";
+		return false;
+	}
+	if(node.String().empty())
+	{
+		error = "error: description must not be empty";
+		return false;
+	}
+	return true;
+}
+
 std::optional<int> readInt(const JsonNode & node, std::string & error, const std::string & name, bool required)
 {
 	if(node.isNull())
@@ -397,15 +421,19 @@ struct McpServer::Impl
 			move["inputSchema"]["properties"]["y"] = integerProperty("Map row.");
 			move["inputSchema"]["properties"]["z"] = integerProperty("Map floor, 0 for the surface.");
 			move["inputSchema"]["properties"]["hero"] = integerProperty("Hero id from get_state. Omit to move the current hero.");
+			move["inputSchema"]["properties"]["description"] = stringProperty("Brief intent in a few words, e.g. Walk east toward the mine.");
 			move["inputSchema"]["required"].Vector().push_back(jsonString("x"));
 			move["inputSchema"]["required"].Vector().push_back(jsonString("y"));
+			move["inputSchema"]["required"].Vector().push_back(jsonString("description"));
 
 			JsonNode attack;
 			attack["name"].String() = "attack";
 			attack["description"].String() = "In a battle, attack an enemy stack whose get_battle line has target=yes. Use a stack id from attack= on the battle line. Shoots when the unit can shoot. Otherwise walks up and strikes in melee. If the target cannot be reached, waits (or defends if this stack already waited). Returns a get_battle snapshot.";
 			attack["inputSchema"]["type"].String() = "object";
 			attack["inputSchema"]["properties"]["stack"] = integerProperty("Enemy stack id from get_battle.");
+			attack["inputSchema"]["properties"]["description"] = stringProperty("Brief intent in a few words, e.g. Shoot the Gnolls.");
 			attack["inputSchema"]["required"].Vector().push_back(jsonString("stack"));
+			attack["inputSchema"]["required"].Vector().push_back(jsonString("description"));
 
 			JsonNode answer;
 			answer["name"].String() = "answer";
@@ -413,7 +441,9 @@ struct McpServer::Impl
 			answer["inputSchema"]["type"].String() = "object";
 			answer["inputSchema"]["properties"]["choice"] = integerProperty("Option number from get_state.");
 			answer["inputSchema"]["properties"]["question"] = integerProperty("Optional server question id from get_state or error text; use with choice to clear a stuck OpenWindow activity.");
+			answer["inputSchema"]["properties"]["description"] = stringProperty("Brief reason for this choice, e.g. Take gold to hire troops.");
 			answer["inputSchema"]["required"].Vector().push_back(jsonString("choice"));
+			answer["inputSchema"]["required"].Vector().push_back(jsonString("description"));
 
 			JsonNode wait;
 			wait["name"].String() = "wait";
@@ -506,6 +536,11 @@ struct McpServer::Impl
 			else if(name == "move_hero")
 			{
 				std::string error;
+				if(!requireActionDescription(arguments, error))
+				{
+					response.body = jsonToolResult(request, error, true);
+					return response;
+				}
 				const std::optional<int> x = readInt(arguments["x"], error, "x", true);
 				const std::optional<int> y = readInt(arguments["y"], error, "y", true);
 				const std::optional<int> z = readInt(arguments["z"], error, "z", false);
@@ -520,6 +555,11 @@ struct McpServer::Impl
 			else if(name == "attack")
 			{
 				std::string error;
+				if(!requireActionDescription(arguments, error))
+				{
+					response.body = jsonToolResult(request, error, true);
+					return response;
+				}
 				const std::optional<int> stack = readInt(arguments["stack"], error, "stack", true);
 				if(!error.empty() || !stack)
 				{
@@ -539,6 +579,11 @@ struct McpServer::Impl
 			else if(name == "answer")
 			{
 				std::string error;
+				if(!requireActionDescription(arguments, error))
+				{
+					response.body = jsonToolResult(request, error, true);
+					return response;
+				}
 				const std::optional<int> choice = readInt(arguments["choice"], error, "choice", true);
 				const std::optional<int> question = readInt(arguments["question"], error, "question", false);
 				if(!error.empty() || !choice)

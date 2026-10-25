@@ -15,7 +15,7 @@ import { RunLog } from "./logger.ts";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, "..");
 
-loadEnv({ path: path.join(root, ".env") });
+loadEnv({ path: path.join(root, ".env"), quiet: true });
 
 type ToolCall = {
 	id?: string | null;
@@ -59,11 +59,6 @@ function initialUserMessage(nextStep: string | null): string {
 function printError(message: string): void {
 	const text = process.stderr.isTTY ? styleText("red", message) : message;
 	console.error(text);
-}
-
-function printTool(message: string): void {
-	const text = process.stdout.isTTY ? styleText("yellow", message) : message;
-	console.log(text);
 }
 
 function parseJsonBody(raw: string): unknown {
@@ -131,16 +126,14 @@ function parseArgs(raw: string | Record<string, unknown> | null | undefined): Re
 	}
 }
 
-function tokenUsageLine(usage: { promptTokens?: number; completionTokens?: number } | undefined): string {
-	const input = usage?.promptTokens ?? 0;
-	const output = usage?.completionTokens ?? 0;
-	return `[llm] ${input} in / ${output} out`;
-}
+const DESCRIBED_ACTION_TOOLS = new Set(["move_hero", "attack", "answer"]);
 
-function formatDurationMs(ms: number): string {
-	if (ms < 1000)
-		return `${Math.round(ms)}ms`;
-	return `${(ms / 1000).toFixed(2)}s`;
+function actionDescription(args: Record<string, unknown>): string | undefined {
+	const raw = args.description;
+	if (typeof raw !== "string")
+		return undefined;
+	const text = raw.replace(/\s+/g, " ").trim();
+	return text || undefined;
 }
 
 function toolErrorDetail(text: string): string {
@@ -151,13 +144,22 @@ function toolErrorDetail(text: string): string {
 	return flat;
 }
 
-function printActionResult(name: string, durationMs: number, text: string, isError: boolean): void {
-	const timing = formatDurationMs(durationMs);
-	if (!isError) {
-		printTool(`[action] ${name} ${timing}`);
-		return;
-	}
-	printError(`[action] ${name} ${timing} — ${toolErrorDetail(text)}`);
+function actionNameLabel(name: string, tty: boolean): string {
+	const label = `[${name}]`;
+	return tty ? styleText("yellow", label) : label;
+}
+
+function printActionStart(name: string, description?: string): void {
+	const suffix = description ? ` ${description}` : "";
+	console.log(`${actionNameLabel(name, process.stdout.isTTY)}${suffix}`);
+}
+
+function printActionError(name: string, text: string): void {
+	const detail = toolErrorDetail(text);
+	if (process.stderr.isTTY)
+		console.error(`${actionNameLabel(name, true)} — ${styleText("red", detail)}`);
+	else
+		console.error(`[${name}] — ${detail}`);
 }
 
 function modelTextForConsole(content: string): string {
@@ -211,12 +213,10 @@ async function main(): Promise<void> {
 	const system = (await readFile(path.join(root, "system.md"), "utf8")).trim();
 	const log = new RunLog(path.join(root, "logs"), new Date());
 	await log.open();
-	console.log(`log ${log.file}`);
 
 	const game = await GameMcp.connect(MCP_URL);
 	const tools = await game.listTools();
 	await log.write({ type: "mcp_connected", url: MCP_URL, tools: tools.map((tool) => tool.name) });
-	console.log(`mcp ${MCP_URL} tools=${tools.map((tool) => tool.name).join(",")}`);
 
 	const mistral = new Mistral({ apiKey });
 	const mistralTools = mcpToolsToMistral(tools);
@@ -310,7 +310,6 @@ async function main(): Promise<void> {
 			totalTokens: usage?.totalTokens ?? null,
 			response,
 		});
-		console.log(tokenUsageLine(usage));
 		if (content)
 			printModel(content);
 
@@ -340,7 +339,9 @@ async function main(): Promise<void> {
 			const name = call.function?.name ?? "";
 			const args = parseArgs(call.function?.arguments);
 			const id = call.id ?? name;
-			await log.write({ type: "tool_call", step, id, name });
+			const description = DESCRIBED_ACTION_TOOLS.has(name) ? actionDescription(args) : undefined;
+			await log.write({ type: "tool_call", step, id, name, description: description ?? null });
+			printActionStart(name, description);
 
 			const started = performance.now();
 			let text: string;
@@ -358,7 +359,8 @@ async function main(): Promise<void> {
 			const durationMs = performance.now() - started;
 
 			await log.write({ type: "tool_result", step, id, name, isError, durationMs, text });
-			printActionResult(name, durationMs, text, isError);
+			if (isError)
+				printActionError(name, text);
 			messages.push({ role: "tool", toolCallId: id, name, content: text });
 		}
 	}
