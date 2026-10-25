@@ -5,6 +5,7 @@ import { styleText } from "node:util";
 
 import { config as loadEnv } from "dotenv";
 import { Mistral } from "@mistralai/mistralai";
+import { MistralError } from "@mistralai/mistralai/models/errors/mistralerror.js";
 import type { Tool } from "@mistralai/mistralai/models/components/tool.js";
 
 import { GameMcp, type McpTool } from "./gameMcp.ts";
@@ -40,6 +41,28 @@ function env(name: string, fallback = ""): string {
 function printError(message: string): void {
 	const text = process.stderr.isTTY ? styleText("red", message) : message;
 	console.error(text);
+}
+
+function parseJsonBody(raw: string): unknown {
+	try {
+		return JSON.parse(raw) as unknown;
+	} catch {
+		return raw;
+	}
+}
+
+function llmErrorRecord(error: unknown): Record<string, unknown> {
+	if (error instanceof MistralError) {
+		return {
+			ok: false,
+			message: error.message,
+			statusCode: error.statusCode,
+			body: parseJsonBody(error.body),
+		};
+	}
+	if (error instanceof Error)
+		return { ok: false, message: error.message, name: error.name };
+	return { ok: false, message: String(error) };
 }
 
 function mcpToolsToMistral(tools: McpTool[]): Tool[] {
@@ -148,26 +171,52 @@ async function main(): Promise<void> {
 		messages = trimHistory(messages);
 
 		await log.write({ type: "llm_request", step, model: MISTRAL_MODEL, messages });
-		const response = await mistral.chat.complete({
-			model: MISTRAL_MODEL,
-			messages: messages as Parameters<typeof mistral.chat.complete>[0]["messages"],
-			tools: mistralTools,
-			toolChoice: "auto",
-		});
+
+		let response: Awaited<ReturnType<typeof mistral.chat.complete>>;
+		try {
+			response = await mistral.chat.complete({
+				model: MISTRAL_MODEL,
+				messages: messages as Parameters<typeof mistral.chat.complete>[0]["messages"],
+				tools: mistralTools,
+				toolChoice: "auto",
+			});
+		} catch (error) {
+			const record = llmErrorRecord(error);
+			await log.write({ type: "llm_response", step, ...record });
+			const detail =
+				record.body && typeof record.body === "object"
+					? JSON.stringify(record.body)
+					: String(record.message ?? error);
+			printError(detail);
+			stopReason = "llm_error";
+			break;
+		}
 
 		const choice = response.choices?.[0];
 		const message = choice?.message;
-		if (!message)
-			throw new Error("Mistral returned no message");
+		if (!message) {
+			await log.write({
+				type: "llm_response",
+				step,
+				ok: false,
+				message: "Mistral returned no message",
+				response,
+			});
+			printError("Mistral returned no message");
+			stopReason = "llm_error";
+			break;
+		}
 
 		const toolCalls = (message.toolCalls ?? []) as ToolCall[];
 		const content = typeof message.content === "string" ? message.content : "";
 		await log.write({
 			type: "llm_response",
 			step,
+			ok: true,
 			finishReason: choice.finishReason,
 			content,
 			toolCalls,
+			response,
 		});
 
 		if (content)

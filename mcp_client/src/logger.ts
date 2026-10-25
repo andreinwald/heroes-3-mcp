@@ -11,7 +11,7 @@ export class RunLog {
 	readonly file: string;
 
 	constructor(logsDir: string, startedAt: Date) {
-		this.file = path.join(logsDir, `run-${stamp(startedAt)}.jsonl`);
+		this.file = path.join(logsDir, `run_${stamp(startedAt)}.jsonl`);
 	}
 
 	async open(): Promise<void> {
@@ -27,8 +27,11 @@ export class RunLog {
 
 function stamp(date: Date): string {
 	const pad = (value: number) => String(value).padStart(2, "0");
-	return (
-		`${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}-` +
-		`${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`
-	);
+	const y = date.getFullYear();
+	const mo = pad(date.getMonth() + 1);
+	const d = pad(date.getDate());
+	const h = pad(date.getHours());
+	const mi = pad(date.getMinutes());
+	const s = pad(date.getSeconds());
+	return `${y}-${mo}-${d}_${h}:${mi}:${s}`;
 }
