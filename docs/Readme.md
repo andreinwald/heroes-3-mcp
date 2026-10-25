@@ -57,3 +57,26 @@ npm start
 ```
 
 Optional: `npm start -- "scout north and pick up gold"` suggests the first action; after that the model keeps playing on its own.
+
+# MCP in the game engine
+
+While **vcmiclient** is open, an MCP HTTP server listens on `http://127.0.0.1:47321/mcp`. Tool calls run on the GUI thread. The model can observe the map, a hero, a town, or a battle, then move, attack, wait, defend, answer a dialog, or end the turn.
+
+Code lives in [`client/mcp/`](../client/mcp):
+
+- [`McpServer.cpp`](../client/mcp/McpServer.cpp) / [`McpServer.h`](../client/mcp/McpServer.h) — HTTP MCP endpoint, tool catalog, request dispatch. Started from [`client/GameEngine.cpp`](../client/GameEngine.cpp).
+- [`GameStateSnapshot.cpp`](../client/mcp/GameStateSnapshot.cpp) / [`GameStateSnapshot.h`](../client/mcp/GameStateSnapshot.h) — `get_state`, `get_map`, `get_hero`, `get_town`, `get_battle` (visible state as text).
+- [`GameActions.cpp`](../client/mcp/GameActions.cpp) / [`GameActions.h`](../client/mcp/GameActions.h) — `move_hero`, `attack`, `wait`, `defend`, `end_turn`; legal battle targets.
+- [`McpDialogs.cpp`](../client/mcp/McpDialogs.cpp) / [`McpDialogs.h`](../client/mcp/McpDialogs.h) — blocking pop-ups in state, and `answer`.
+- [`McpBattleWaiter.cpp`](../client/mcp/McpBattleWaiter.cpp) / [`McpBattleWaiter.h`](../client/mcp/McpBattleWaiter.h) — wait off the GUI thread until the next battle decision is ready.
+
+# Game harness
+
+[`mcp_client/`](../mcp_client) is a TypeScript loop: connect to the game MCP, send state to Mistral, run the tool the model picks, repeat. It does not embed the engine.
+
+- [`src/agent.ts`](../mcp_client/src/agent.ts) — main loop, Mistral calls, tool execution (`mistral-large-4`).
+- [`src/gameMcp.ts`](../mcp_client/src/gameMcp.ts) — MCP client over HTTP to `127.0.0.1:47321`.
+- [`src/logger.ts`](../mcp_client/src/logger.ts) — JSONL run logs in `mcp_client/logs/`.
+- [`system.md`](../mcp_client/system.md) — system prompt (how to play; tools come from the engine at runtime).
+- [`.env.example`](../mcp_client/.env.example) — `MISTRAL_API_KEY` template. Copy to `.env`.
+- [`package.json`](../mcp_client/package.json) — `npm start` runs the agent.
