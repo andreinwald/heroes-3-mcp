@@ -19,7 +19,7 @@ std::string buildMcpGameState();
 /// Adventure-map camera FOV: terrain, roads, rivers, visitable objects, and tiles the current hero can reach this turn. GUI thread only.
 std::string buildMcpMapState();
 
-/// Current battle: round, active stack, heroes, stacks, and legal actions for the active stack. GUI thread only. "battle: none" when not fighting.
+/// Current battle: round, active stack, heroes, stacks, legal attack ids, and per-enemy target=yes|no. GUI thread only. "battle: none" when not fighting.
 std::string buildMcpBattleState();
 
 /// One owned hero: army, primary skills, secondary skills, artifacts, spellbook. Omit id for the selected hero.

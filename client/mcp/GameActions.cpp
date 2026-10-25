@@ -172,6 +172,37 @@ const CGHeroInstance * findHero(CPlayerInterface & interface, std::optional<int>
 	return heroes.empty() ? nullptr : heroes.front();
 }
 
+std::string sendBattleCommand(CCallback & cb, BattleID battleID, const CStack * actor, const BattleAction & action, std::shared_lock<std::shared_mutex> & stateLock, std::string result)
+{
+	std::shared_ptr<BattleInterface> battleUi = CPlayerInterface::battleInt;
+	const bool useWindow = battleUi && battleUi->getBattleID() == battleID;
+	stateLock.unlock();
+	if(useWindow)
+	{
+		McpBattleWaiter::instance().arm();
+		battleUi->sendCommand(action, actor);
+	}
+	else
+		cb.battleMakeUnitAction(battleID, action);
+	return result;
+}
+
+std::string waitOrDefend(CCallback & cb, BattleID battleID, const CStack * actor, std::shared_lock<std::shared_mutex> & stateLock, const std::string & reason)
+{
+	if(!actor->waitedThisRound())
+	{
+		return sendBattleCommand(cb, battleID, actor, BattleAction::makeWait(actor), stateLock,
+			"wait stack=" + std::to_string(actor->unitId())
+				+ " creature=" + creatureName(*actor)
+				+ " " + field("reason", reason) + "\n");
+	}
+
+	return sendBattleCommand(cb, battleID, actor, BattleAction::makeDefend(actor), stateLock,
+		"defend stack=" + std::to_string(actor->unitId())
+			+ " creature=" + creatureName(*actor)
+			+ " " + field("reason", reason) + "\n");
+}
+
 }
 
 bool mcpCanAttackTarget(CCallback & cb, const CPlayerBattleCallback & battle, const battle::Unit & actor, const battle::Unit & target)
@@ -214,6 +245,36 @@ bool mcpCanAttackTarget(CCallback & cb, const CPlayerBattleCallback & battle, co
 		}
 	}
 	return false;
+}
+
+std::vector<int> mcpLegalAttackIds(CCallback & cb, const CPlayerBattleCallback & battle, const battle::Unit & actor)
+{
+	std::vector<int> ids;
+	for(const CStack * enemy : battle.battleGetStacks(CBattleInfoEssentials::ONLY_ENEMY, true))
+	{
+		if(enemy && mcpCanAttackTarget(cb, battle, actor, *enemy))
+			ids.push_back(static_cast<int>(enemy->unitId()));
+	}
+	std::sort(ids.begin(), ids.end());
+	return ids;
+}
+
+std::string mcpBattleCanFields(CCallback & cb, const CPlayerBattleCallback & battle, const battle::Unit & actor)
+{
+	const auto ids = mcpLegalAttackIds(cb, battle, actor);
+	std::string attackIds;
+	for(int id : ids)
+	{
+		if(!attackIds.empty())
+			attackIds += ",";
+		attackIds += std::to_string(id);
+	}
+
+	const auto * stack = dynamic_cast<const CStack *>(&actor);
+	const bool canWait = stack ? !stack->waitedThisRound() : !actor.waited();
+	return "attack=" + (attackIds.empty() ? std::string("none") : attackIds)
+		+ " wait=" + (canWait ? "yes" : "no")
+		+ " defend=yes";
 }
 
 std::string mcpMoveHero(int x, int y, std::optional<int> z, std::optional<int> heroId)
@@ -382,8 +443,14 @@ std::string mcpAttack(int stackId)
 	}
 
 	if(!action)
-		return "error: " + creatureName(*actor) + " cannot attack " + creatureName(*target)
-			+ " (out of range or no legal move; use defend or wait, or pick another target)";
+	{
+		if(!mcpLegalAttackIds(cb, battle, *actor).empty())
+			return "error: " + creatureName(*actor) + " cannot attack " + creatureName(*target)
+				+ " stack=" + std::to_string(target->unitId())
+				+ "; legal " + mcpBattleCanFields(cb, battle, *actor);
+
+		return waitOrDefend(cb, battleID, actorStack, stateLock, "no_legal_attack");
+	}
 
 	std::string result = "attack";
 	result += " " + field("action", attackActionName(action->actionType));
@@ -395,20 +462,7 @@ std::string mcpAttack(int stackId)
 		result += " " + field("from", std::to_string(attackFrom.toInt()));
 	result += "\n";
 
-	std::shared_ptr<BattleInterface> battleUi = CPlayerInterface::battleInt;
-	const bool useWindow = battleUi && battleUi->getBattleID() == battleID;
-
-	stateLock.unlock();
-
-	if(useWindow)
-	{
-		McpBattleWaiter::instance().arm();
-		battleUi->sendCommand(*action, actorStack);
-	}
-	else
-		cb.battleMakeUnitAction(battleID, *action);
-
-	return result;
+	return sendBattleCommand(cb, battleID, actorStack, *action, stateLock, result);
 }
 
 std::string mcpBattleWait()
@@ -439,25 +493,10 @@ std::string mcpBattleWait()
 	if(!readyError.empty())
 		return readyError;
 	if(actorStack->waitedThisRound())
-		return "error: " + creatureName(*actorStack) + " already waited this round";
+		return waitOrDefend(cb, battleID, actorStack, stateLock, "already_waited");
 
-	const BattleAction action = BattleAction::makeWait(actorStack);
-	std::string result = "wait stack=" + std::to_string(actorStack->unitId()) + " creature=" + creatureName(*actorStack) + "\n";
-
-	std::shared_ptr<BattleInterface> battleUi = CPlayerInterface::battleInt;
-	const bool useWindow = battleUi && battleUi->getBattleID() == battleID;
-
-	stateLock.unlock();
-
-	if(useWindow)
-	{
-		McpBattleWaiter::instance().arm();
-		battleUi->sendCommand(action, actorStack);
-	}
-	else
-		cb.battleMakeUnitAction(battleID, action);
-
-	return result;
+	return sendBattleCommand(cb, battleID, actorStack, BattleAction::makeWait(actorStack), stateLock,
+		"wait stack=" + std::to_string(actorStack->unitId()) + " creature=" + creatureName(*actorStack) + "\n");
 }
 
 std::string mcpBattleDefend()
@@ -488,23 +527,8 @@ std::string mcpBattleDefend()
 	if(!readyError.empty())
 		return readyError;
 
-	const BattleAction action = BattleAction::makeDefend(actorStack);
-	std::string result = "defend stack=" + std::to_string(actorStack->unitId()) + " creature=" + creatureName(*actorStack) + "\n";
-
-	std::shared_ptr<BattleInterface> battleUi = CPlayerInterface::battleInt;
-	const bool useWindow = battleUi && battleUi->getBattleID() == battleID;
-
-	stateLock.unlock();
-
-	if(useWindow)
-	{
-		McpBattleWaiter::instance().arm();
-		battleUi->sendCommand(action, actorStack);
-	}
-	else
-		cb.battleMakeUnitAction(battleID, action);
-
-	return result;
+	return sendBattleCommand(cb, battleID, actorStack, BattleAction::makeDefend(actorStack), stateLock,
+		"defend stack=" + std::to_string(actorStack->unitId()) + " creature=" + creatureName(*actorStack) + "\n");
 }
 
 std::string mcpAnswer(int choice, std::optional<int> questionOverride)

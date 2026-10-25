@@ -429,24 +429,65 @@ void appendBattle(std::string & out, CCallback & cb, const ITranslator & transla
 		const battle::Unit * activeUnit = battle->battleActiveUnit();
 		const int activeStackId = activeUnit ? activeUnit->unitId() : -1;
 
+		auto stacks = battle->battleGetStacks(CBattleInfoEssentials::MINE_AND_ENEMY, true);
+		std::sort(stacks.begin(), stacks.end(), [](const CStack * left, const CStack * right)
+		{
+			if(!left || !right)
+				return left != nullptr;
+			return left->getPosition().toInt() < right->getPosition().toInt();
+		});
+
+		const CStack * actor = nullptr;
+		for(const CStack * stack : stacks)
+		{
+			if(stack && stack->unitId() == static_cast<uint32_t>(activeStackId))
+			{
+				actor = stack;
+				break;
+			}
+		}
+
+		bool ourTurn = false;
+		const char * turn = "none";
 		if(activeUnit)
 		{
-			out += " " + field("active", std::to_string(activeStackId));
 			const BattleSide mySide = battle->battleGetMySide();
-			const char * turn = activeUnit->unitSide() == mySide ? "yours" : "enemy";
+			turn = activeUnit->unitSide() == mySide ? "yours" : "enemy";
 			if(activeUnit->unitSide() == mySide)
 			{
 				if(const std::shared_ptr<BattleInterface> battleUi = CPlayerInterface::battleInt;
 					battleUi && battleUi->getBattleID() == battleID && (battleUi->hasAnimations() || !battleUi->makingTurn()))
 					turn = "busy";
+				else
+					ourTurn = actor != nullptr;
 			}
-			out += " " + field("active_turn", turn);
 		}
-		else
+
+		std::set<int> legalTargets;
+		std::string canFields;
+		if(ourTurn)
 		{
-			out += " " + field("active", "none");
-			out += " " + field("active_turn", "none");
+			for(int id : mcpLegalAttackIds(cb, *battle, *actor))
+				legalTargets.insert(id);
+			std::string attackIds;
+			for(int id : legalTargets)
+			{
+				if(!attackIds.empty())
+					attackIds += ",";
+				attackIds += std::to_string(id);
+			}
+			canFields = "attack=" + (attackIds.empty() ? std::string("none") : attackIds)
+				+ " wait=" + (actor->waitedThisRound() ? "no" : "yes")
+				+ " defend=yes";
 		}
+
+		if(activeUnit)
+			out += " " + field("active", std::to_string(activeStackId));
+		else
+			out += " " + field("active", "none");
+		out += " " + field("active_turn", turn);
+		if(!canFields.empty())
+			out += " " + canFields;
 
 		if(const CGTownInstance * town = battle->battleGetDefendedTown())
 			out += " " + field("siege", translator.translate(town->getNameTextID()));
@@ -455,14 +496,6 @@ void appendBattle(std::string & out, CCallback & cb, const ITranslator & transla
 
 		appendBattleHero(out, *battle, BattleSide::ATTACKER, translator);
 		appendBattleHero(out, *battle, BattleSide::DEFENDER, translator);
-
-		auto stacks = battle->battleGetStacks(CBattleInfoEssentials::MINE_AND_ENEMY, true);
-		std::sort(stacks.begin(), stacks.end(), [](const CStack * left, const CStack * right)
-		{
-			if(!left || !right)
-				return left != nullptr;
-			return left->getPosition().toInt() < right->getPosition().toInt();
-		});
 
 		for(const CStack * stack : stacks)
 		{
@@ -491,43 +524,10 @@ void appendBattle(std::string & out, CCallback & cb, const ITranslator & transla
 				out += " defended=yes";
 			if(stack->doubleWide())
 				out += " wide=yes";
+			if(ourTurn && stack->unitSide() != battle->battleGetMySide())
+				out += stack->alive() && legalTargets.count(static_cast<int>(stack->unitId())) ? " target=yes" : " target=no";
 			out += "\n";
 		}
-
-		if(activeStackId < 0)
-			continue;
-
-		const CStack * actor = nullptr;
-		for(const CStack * stack : stacks)
-		{
-			if(stack && stack->unitId() == static_cast<uint32_t>(activeStackId))
-			{
-				actor = stack;
-				break;
-			}
-		}
-		if(!actor || actor->unitSide() != battle->battleGetMySide())
-			continue;
-
-		std::shared_ptr<BattleInterface> battleUi = CPlayerInterface::battleInt;
-		if(battleUi && battleUi->getBattleID() == battleID && (battleUi->hasAnimations() || !battleUi->makingTurn()))
-			continue;
-
-		std::string attackIds;
-		for(const CStack * enemy : stacks)
-		{
-			if(!enemy || !mcpCanAttackTarget(cb, *battle, *actor, *enemy))
-				continue;
-			if(!attackIds.empty())
-				attackIds += ",";
-			attackIds += std::to_string(enemy->unitId());
-		}
-
-		out += "can";
-		out += " " + field("attack", attackIds.empty() ? std::string("none") : attackIds);
-		out += " " + field("wait", actor->waitedThisRound() ? "no" : "yes");
-		out += " defend=yes";
-		out += "\n";
 	}
 }
 

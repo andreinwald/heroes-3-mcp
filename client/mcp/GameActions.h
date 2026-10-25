@@ -11,6 +11,7 @@
 
 #include <optional>
 #include <string>
+#include <vector>
 
 class CCallback;
 class CPlayerBattleCallback;
@@ -26,6 +27,12 @@ std::string mcpMoveHero(int x, int y, std::optional<int> z, std::optional<int> h
 
 /// True when the actor has a legal shot or melee against the target. GUI thread, state mutex held.
 bool mcpCanAttackTarget(CCallback & cb, const CPlayerBattleCallback & battle, const battle::Unit & actor, const battle::Unit & target);
+
+/// Enemy stack ids the actor can legally shoot or melee. GUI thread, state mutex held.
+std::vector<int> mcpLegalAttackIds(CCallback & cb, const CPlayerBattleCallback & battle, const battle::Unit & actor);
+
+/// "attack=3,4 wait=yes defend=yes" for the active stack. GUI thread, state mutex held.
+std::string mcpBattleCanFields(CCallback & cb, const CPlayerBattleCallback & battle, const battle::Unit & actor);
 
 /// Attack with the active stack. A shot if it can shoot, otherwise a melee attack, walking up if needed.
 /// Call only on the GUI thread, while holding the interface mutex.

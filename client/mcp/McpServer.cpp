@@ -372,7 +372,7 @@ struct McpServer::Impl
 
 			JsonNode battle;
 			battle["name"].String() = "get_battle";
-			battle["description"].String() = "Current battle: round, terrain, active stack (active=yes), whose turn (active_turn=yours|enemy|busy|none), battle heroes, stacks (id, side, creature, count, hp, hex, shots, waited), and a can line listing legal attack target ids plus wait=yes|no and defend=yes. Waits until battle animations finish. Use stack ids from here for attack. Returns battle: none when not in combat.";
+			battle["description"].String() = "Current battle: round, terrain, active stack (active=yes), whose turn (active_turn=yours|enemy|busy|none), and when it is your turn the legal actions on the battle line (attack=ids|none wait=yes|no defend=yes). Enemy stacks have target=yes only if the active unit can legally attack them; otherwise target=no. Do not call attack on target=no. If attack=none, wait or defend. Stack ids for attack come from here. Returns battle: none when not in combat.";
 			battle["inputSchema"]["type"].String() = "object";
 			battle["inputSchema"]["properties"].Struct();
 
@@ -402,7 +402,7 @@ struct McpServer::Impl
 
 			JsonNode attack;
 			attack["name"].String() = "attack";
-			attack["description"].String() = "In a battle, attack an enemy stack with the active unit (stack active=yes in get_battle). Shoots when the unit can shoot. Otherwise walks up and strikes in melee. Waits until battle animations finish, then until the next player decision. If attack fails as out of range, use defend or wait instead of repeating attack. Returns a get_battle snapshot.";
+			attack["description"].String() = "In a battle, attack an enemy stack whose get_battle line has target=yes. Use a stack id from attack= on the battle line. Shoots when the unit can shoot. Otherwise walks up and strikes in melee. If the target cannot be reached, waits (or defends if this stack already waited). Returns a get_battle snapshot.";
 			attack["inputSchema"]["type"].String() = "object";
 			attack["inputSchema"]["properties"]["stack"] = integerProperty("Enemy stack id from get_battle.");
 			attack["inputSchema"]["required"].Vector().push_back(jsonString("stack"));
@@ -417,7 +417,7 @@ struct McpServer::Impl
 
 			JsonNode wait;
 			wait["name"].String() = "wait";
-			wait["description"].String() = "In a battle, wait with the active stack so another unit can act first this round. Returns after the next player decision, with a get_battle snapshot.";
+			wait["description"].String() = "In a battle, wait with the active stack so another unit can act first this round. If this stack already waited, defends instead. Returns after the next player decision, with a get_battle snapshot.";
 			wait["inputSchema"]["type"].String() = "object";
 			wait["inputSchema"]["properties"].Struct();
 
