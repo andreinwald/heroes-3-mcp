@@ -29,10 +29,11 @@ type ChatMessage =
 
 const MAX_MESSAGES = 80;
 const IDLE_LIMIT = 3;
-const MISTRAL_MODEL = "mistral-large-latest";
+/** Mistral Small 4 (v26.03) */
+const MISTRAL_MODEL = "mistral-small-2603";
 const MCP_URL = "http://127.0.0.1:47321/mcp";
 /** 0 = no limit */
-const MAX_STEPS = 0;
+const MAX_STEPS = 5;
 
 function env(name: string, fallback = ""): string {
 	return (process.env[name] ?? fallback).trim();
@@ -41,6 +42,11 @@ function env(name: string, fallback = ""): string {
 function printError(message: string): void {
 	const text = process.stderr.isTTY ? styleText("red", message) : message;
 	console.error(text);
+}
+
+function printTool(message: string): void {
+	const text = process.stdout.isTTY ? styleText("yellow", message) : message;
+	console.log(text);
 }
 
 function parseJsonBody(raw: string): unknown {
@@ -106,6 +112,12 @@ function parseArgs(raw: string | Record<string, unknown> | null | undefined): Re
 	} catch {
 		return {};
 	}
+}
+
+function formatDurationMs(ms: number): string {
+	if (ms < 1000)
+		return `${Math.round(ms)}ms`;
+	return `${(ms / 1000).toFixed(2)}s`;
 }
 
 function preview(text: string, limit = 240): string {
@@ -248,9 +260,9 @@ async function main(): Promise<void> {
 			const name = call.function?.name ?? "";
 			const args = parseArgs(call.function?.arguments);
 			const id = call.id ?? name;
-			console.log(`→ ${name} ${JSON.stringify(args)}`);
-			await log.write({ type: "tool_call", step, id, name, arguments: args });
+			await log.write({ type: "tool_call", step, id, name });
 
+			const started = performance.now();
 			let text: string;
 			let isError = false;
 			try {
@@ -263,13 +275,11 @@ async function main(): Promise<void> {
 				text = error instanceof Error ? error.message : String(error);
 				isError = true;
 			}
+			const durationMs = performance.now() - started;
 
-			await log.write({ type: "tool_result", step, id, name, isError, text });
-			const resultLine = `← ${isError ? "error " : ""}${preview(text)}`;
-			if (isError)
-				printError(resultLine);
-			else
-				console.log(resultLine);
+			await log.write({ type: "tool_result", step, id, name, isError, durationMs, text });
+			const resultLine = `${name} ${formatDurationMs(durationMs)}${isError ? " error" : ""} — ${preview(text)}`;
+			printTool(resultLine);
 			messages.push({ role: "tool", toolCallId: id, name, content: text });
 		}
 	}
