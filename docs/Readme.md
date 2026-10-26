@@ -45,6 +45,14 @@ More info:
 
 Start **vcmiclient**. While the game window is open, the MCP server listens on `http://127.0.0.1:47321/mcp`.
 
+## 2.1 Alternative to compiling
+As alternative to compiling code would be downloading and running binary files from the release run:
+
+https://github.com/andreinwald/heroes-3-mcp/actions/runs/40203187558/attempts/1
+
+<img width="723" height="504" alt="Screenshot 2026-10-26 at 9 58 38 AM" src="https://github.com/user-attachments/assets/4b6502d5-3d3f-4af2-bf02-898272e40187" />
+
+
 ## 3. Game agent and API key
 
 The agent lives in [`mcp_client/`](../mcp_client). Copy `.env.example` to `.env` and put your Mistral API key in `MISTRAL_API_KEY`.
